@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Temuan Lapangan QSHE · QSHE Department</title>
+<meta name="theme-color" content="#13294B">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div class="wordmark" aria-label="QSHE Department"><i class="wm-bar" aria-hidden="true"></i><span><b>QSHE</b> Department</span></div>
+    <div class="app-name">Temuan Lapangan<small>Foto + catatan singkat → laporan inspeksi baku</small></div>
+    <div class="top-sp"></div>
+    <button class="btn" id="btnInstall" hidden style="min-height:36px;padding:0 12px">Pasang aplikasi</button>
+    <div class="status-pill" id="storeStatus" title="Status penyimpanan" role="button" tabindex="0"><i class="dot"></i><span>Memuat…</span></div>
+    <button class="icon-btn" id="btnSettings" aria-label="Pengaturan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" data-tab="catat" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Catat</button>
+    <button class="tab" role="tab" data-tab="register" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>Temuan <span class="count" id="cntReview" hidden></span></button>
+    <button class="tab" role="tab" data-tab="dashboard" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Dashboard</button>
+    <button class="tab" role="tab" data-tab="laporan" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/></svg>Laporan</button>
+  </nav>
+</header>
+
+<main>
+  <!-- ================= CATAT ================= -->
+  <section class="view" id="view-catat">
+    <div class="grid-2">
+      <div>
+        <div class="panel stack">
+          <div class="row between"><h2>Inspeksi</h2><button class="btn ghost" id="btnNewInsp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>Inspeksi baru</button></div>
+          <label class="f">Pilih inspeksi yang sedang berjalan
+            <select class="in" id="selInsp"></select>
+          </label>
+          <div id="inspInfo"></div>
+        </div>
+
+        <div class="panel stack" id="newEntry">
+          <div class="row between">
+            <h2>Entri baru</h2>
+            <div class="seg" id="segJenis"><button data-v="temuan" aria-pressed="true">Temuan</button><button data-v="good" aria-pressed="false">Good practice</button></div>
+          </div>
+          <div>
+            <div class="small muted" style="margin-bottom:6px">Foto (maks. 4). Foto pertama dipakai di slide.</div>
+            <div class="photos" id="photoGrid"></div>
+            <input type="file" id="filePhoto" accept="image/*" multiple class="sr">
+          </div>
+          <label class="f">Lokasi spesifik <span class="hint">contoh: rak safety shoes, workshop</span>
+            <input class="in" id="inLokasi" autocomplete="off">
+          </label>
+          <label class="f">Catatan singkat — tulis apa adanya
+            <textarea class="in" id="inRaw" rows="4" placeholder="contoh: sepatu safety di rak workshop solnya banyak yg getas & robek, masih dicampur sama yg bagus"></textarea>
+          </label>
+          <div id="aiArea"></div>
+          <div class="row">
+            <button class="btn brand" id="btnAI" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>Rapikan jadi laporan</button>
+            <button class="btn" id="btnRapi"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 12h10M4 17h7"/><path d="M15 17l2 2 4-4"/></svg>Rapikan tanpa AI</button>
+            <button class="btn ghost" id="btnManual">Isi manual</button>
+          </div>
+          <p class="small muted" id="aiNote" style="margin:0"></p>
+        </div>
+      </div>
+
+      <div>
+        <div id="editorHost"></div>
+        <div class="panel" id="sessionPanel">
+          <div class="row between"><h3 id="sessTitle">Entri di inspeksi ini</h3><span class="small muted" id="sessCount"></span></div>
+          <div class="flist" id="sessList" style="margin-top:10px"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= REGISTER ================= -->
+  <section class="view" id="view-register" hidden>
+    <div class="row between">
+      <div><h2>Register temuan</h2><p class="sub">Semua temuan dari seluruh inspeksi. Ketuk untuk edit, review, atau update tindak lanjut.</p></div>
+    </div>
+    <div class="filters">
+      <input class="in" id="fQ" placeholder="Cari judul, lokasi, PIC, klausul…">
+      <select class="in" id="fInsp"></select>
+      <select class="in" id="fSev"><option value="">Semua tingkat</option><option>Critical</option><option>Major</option><option>Minor</option><option value="good">Good practice</option></select>
+      <select class="in" id="fStatus"><option value="">Semua status</option><option value="Open">Open</option><option value="On Progress">On Progress</option><option value="Closed">Closed</option><option value="late">Lewat batas waktu</option></select>
+      <select class="in" id="fReview"><option value="">Semua tahap</option><option value="Draft">Draft</option><option value="Review">Menunggu Supervisor</option><option value="QSHE">Menunggu QSHE</option><option value="Final">Final</option></select>
+    </div>
+    <div class="flist" id="regList"></div>
+  </section>
+
+  <!-- ================= DASHBOARD ================= -->
+  <section class="view" id="view-dashboard" hidden>
+    <div class="row between" style="align-items:flex-end">
+      <div><h2>Monitoring tindak lanjut</h2><p class="sub" id="dashSub"></p></div>
+      <div class="row">
+        <select class="in" id="dArea" style="width:auto"></select>
+        <select class="in" id="dAspek" style="width:auto"><option value="">Semua aspek</option><option>K3</option><option>Lingkungan</option><option>Mutu</option></select>
+        <select class="in" id="dPeriode" style="width:auto"><option value="all">Semua periode</option><option value="30">30 hari</option><option value="90">90 hari</option><option value="365">12 bulan</option></select>
+      </div>
+    </div>
+    <div class="kpis" id="kpis" style="margin-top:14px"></div>
+    <div class="charts">
+      <div class="panel"><h3>Status per tingkat temuan</h3><div class="chart-box"><canvas id="cSev"></canvas></div></div>
+      <div class="panel"><h3>Temuan terbuka per PIC</h3><div class="chart-box"><canvas id="cPic"></canvas></div></div>
+      <div class="panel"><h3>Tren temuan per bulan</h3><div class="chart-box"><canvas id="cTrend"></canvas></div></div>
+      <div class="panel"><h3>Klausul paling sering dilanggar</h3><div class="chart-box"><canvas id="cClause"></canvas></div></div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <div class="row between"><h3>Perlu perhatian</h3><span class="small muted">Temuan terbuka, diurutkan dari yang paling lewat batas waktu</span></div>
+      <div class="tbl-wrap"><table class="t" id="tblLate"></table></div>
+    </div>
+    <div class="panel" style="margin-top:14px">
+      <h3>Rekap per area</h3>
+      <div class="tbl-wrap"><table class="t" id="tblArea"></table></div>
+    </div>
+  </section>
+
+  <!-- ================= LAPORAN ================= -->
+  <section class="view" id="view-laporan" hidden>
+    <div class="grid-2">
+      <div class="panel stack">
+        <h2>Susun laporan</h2>
+        <label class="f">Inspeksi
+          <select class="in" id="rInsp"></select>
+        </label>
+        <div id="rSummary"></div>
+        <div class="stack small">
+          <label class="row"><input type="checkbox" id="rTrack" checked> Sertakan slide tracking temuan sebelumnya (area yang sama)</label>
+          <label class="row"><input type="checkbox" id="rGood" checked> Sertakan slide good practice</label>
+          <label class="row"><input type="checkbox" id="rFinalOnly"> Hanya temuan yang sudah Final</label>
+        </div>
+        <hr class="rule">
+        <div class="stack">
+          <button class="btn primary block" id="btnPPT"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="13" rx="1"/><path d="M8 21h8M12 17v4"/></svg>Unduh PowerPoint</button>
+          <button class="btn block" id="btnXLSInsp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="1"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>Unduh Excel — inspeksi ini</button>
+          <button class="btn block" id="btnXLSAll">Unduh Excel — seluruh register</button>
+        </div>
+        <hr class="rule">
+        <div class="stack">
+          <div class="small muted">Kirim ke QSHE (data tersimpan di perangkat ini):</div>
+          <button class="btn block" id="btnText">Salin ringkasan teks — WhatsApp / email</button>
+          <button class="btn block" id="btnPack">Unduh paket data (.json) — diimpor QSHE</button>
+        </div>
+        <p class="small muted" id="expNote" style="margin:0"></p>
+      </div>
+      <div class="panel stack">
+        <div class="row between"><h2>Kesimpulan & rekomendasi</h2><button class="btn brand" id="btnConc">Susun otomatis</button></div>
+        <p class="sub" style="margin:0">Masuk ke slide Kesimpulan. Bisa diedit sebelum diunduh.</p>
+        <div id="concBusy"></div>
+        <label class="f">Kesimpulan
+          <textarea class="in" id="rConc" rows="7"></textarea>
+        </label>
+        <label class="f">Rekomendasi tindakan perbaikan <span class="hint">satu per baris, format: Judul: uraian</span>
+          <textarea class="in" id="rRec" rows="6"></textarea>
+        </label>
+        <div class="row"><button class="btn" id="btnSaveConc">Simpan kesimpulan</button></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- modals -->
+<div class="modal" id="mInsp" hidden><div class="modal-card"><div class="panel stack" style="position:relative">
+  <h2 id="mInspTitle">Inspeksi baru</h2>
+  <div class="two">
+    <label class="f">Area <input class="in" id="iArea" list="dlArea" autocomplete="off"></label>
+    <label class="f">Kode area <span class="hint">untuk nomor temuan, mis. JKT</span><input class="in" id="iKode" maxlength="6" autocomplete="off"></label>
+  </div>
+  <div class="two">
+    <label class="f">Tanggal <input class="in" type="date" id="iTgl"></label>
+    <label class="f">Agenda <input class="in" id="iAgenda"></label>
+  </div>
+  <label class="f">Inspector <span class="hint">pisahkan dengan koma</span><input class="in" id="iInspector"></label>
+  <label class="f">Inspectee / pendamping area <span class="hint">pisahkan dengan koma</span><input class="in" id="iInspectee"></label>
+  <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-close>Batal</button><button class="btn primary" id="btnSaveInsp">Simpan inspeksi</button></div>
+</div></div></div>
+
+<div class="modal" id="mDetail" hidden><div class="modal-card" style="position:relative" id="detailHost"></div></div>
+
+<div class="modal" id="mSettings" hidden><div class="modal-card"><div class="panel stack">
+  <h2>Pengaturan</h2>
+  <p class="sub" style="margin:0">Tersimpan di perangkat ini. Bagikan ke tim lewat folder bersama atau paket data.</p>
+  <section class="stack" style="border:1px solid var(--line);border-radius:10px;padding:12px">
+    <h4 style="margin:0">Bagikan aplikasi</h4>
+    <p class="small muted" style="margin:0">Kirim link aplikasi ke rekan kerja. Mereka cukup membuka link lalu memasangnya — data tiap orang tersimpan di perangkatnya sendiri.</p>
+    <div class="row"><button type="button" class="btn" id="btnShareApp">Bagikan link aplikasi</button></div>
+  </section>
+  <section class="stack" style="border:1px solid var(--line);border-radius:10px;padding:12px">
+    <h4 style="margin:0">Folder penyimpanan</h4>
+    <p class="small muted" id="fldInfo" style="margin:0"></p>
+    <div class="row" style="flex-wrap:wrap;gap:8px" id="fldBtns">
+      <button type="button" class="btn" id="btnPickFolder">Pilih folder</button>
+      <button type="button" class="btn ghost" id="btnRestoreFolder">Sinkronkan sekarang</button>
+      <button type="button" class="btn ghost" id="btnForgetFolder">Lepas folder</button>
+    </div>
+  </section>
+  <section class="stack" style="border:1px solid var(--line);border-radius:10px;padding:12px">
+    <h4 style="margin:0">Perangkat QSHE (reviewer akhir)</h4>
+    <p class="small muted" id="qsheInfo" style="margin:0"></p>
+    <div class="row"><button type="button" class="btn" id="btnQsheMode"></button></div>
+  </section>
+  <div class="three" hidden>
+    <label class="f">Batas waktu Critical (hari)<input class="in" type="number" min="1" id="sCrit"></label>
+    <label class="f">Batas waktu Major (hari)<input class="in" type="number" min="1" id="sMajor"></label>
+    <label class="f">Batas waktu Minor (hari)<input class="in" type="number" min="1" id="sMinor"></label>
+  </div>
+  <label class="f">Daftar PIC / fungsi penanggung jawab <span class="hint">satu per baris</span><textarea class="in" id="sPics" rows="6"></textarea></label>
+  <label class="f">Daftar area <span class="hint">satu per baris, format: Nama area | KODE</span><textarea class="in" id="sAreas" rows="6"></textarea></label>
+  <label class="f">Agenda default<input class="in" id="sAgenda"></label>
+  <div class="two">
+    <label class="f">Daftar supervisor reviewer <span class="hint">satu nama per baris</span><textarea class="in" id="sSpv" rows="4"></textarea></label>
+    <label class="f">Reviewer akhir QSHE <span class="hint">persetujuan Final hanya dari perangkat QSHE</span><input class="in" id="sQshe"></label>
+  </div>
+  <label class="f">Link folder OneDrive QSHE untuk unggah laporan <span class="hint">link "Minta file / Request files" dari OneDrive — siapa pun bisa mengunggah tanpa login</span><input class="in" id="sOneDrive" placeholder="https://…-my.sharepoint.com/…" inputmode="url"></label>
+  <label class="f">Impor paket data dari lapangan <span class="hint">file .json hasil "Unduh paket data" — digabung ke register yang sedang dibuka</span>
+    <input class="in" type="file" id="fImport" accept=".json,application/json"></label>
+  <div class="row between">
+    <div class="seg" id="segTheme"><button data-v="auto" aria-pressed="true">Otomatis</button><button data-v="light" aria-pressed="false">Terang</button><button data-v="dark" aria-pressed="false">Gelap</button></div>
+    <div class="row"><button class="btn ghost" data-close>Tutup</button><button class="btn primary" id="btnSaveSettings">Simpan pengaturan</button></div>
+  </div>
+</div></div></div>
+
+<div class="modal" id="mText" hidden><div class="modal-card"><div class="panel stack">
+  <h2>Ringkasan teks laporan</h2>
+  <p class="sub" style="margin:0">Tekan Salin, lalu tempel di WhatsApp atau email. Jika tombol Salin tidak berfungsi, tekan lama pada teks lalu pilih Salin semua.</p>
+  <textarea class="in" id="txtOut" rows="16" readonly style="font-size:14px"></textarea>
+  <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-close>Tutup</button><button class="btn primary" id="btnCopyTxt">Salin</button></div>
+</div></div></div>
+
+<datalist id="dlArea"></datalist>
+<datalist id="dlPic"></datalist>
+<datalist id="dlSpv"></datalist>
+<div id="toastHost"></div>
+
+<script src="js/data-klausul.js"></script>
+<script src="js/data-ppt.js"></script>
+<script src="js/rapikan.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
