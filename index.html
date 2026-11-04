@@ -174,8 +174,8 @@
 <div class="modal" id="mInsp" hidden><div class="modal-card"><div class="panel stack" style="position:relative">
   <h2 id="mInspTitle">Inspeksi baru</h2>
   <div class="two">
-    <label class="f">Area <input class="in" id="iArea" list="dlArea" autocomplete="off"></label>
-    <label class="f">Kode area <span class="hint">untuk nomor temuan, mis. JKT</span><input class="in" id="iKode" maxlength="6" autocomplete="off"></label>
+    <label class="f">Lokasi / area <span class="hint">ketik bebas: cabang, project, atau site</span><input class="in" id="iArea" autocomplete="off" placeholder="contoh: Cabang Sampit / Project KPC Sangatta"></label>
+    <label class="f">Kode <span class="hint">untuk nomor temuan, terisi otomatis, boleh diubah</span><input class="in" id="iKode" maxlength="6" autocomplete="off"></label>
   </div>
   <div class="two">
     <label class="f">Tanggal <input class="in" type="date" id="iTgl"></label>
@@ -216,7 +216,6 @@
     <label class="f">Batas waktu Minor (hari)<input class="in" type="number" min="1" id="sMinor"></label>
   </div>
   <label class="f">Daftar PIC / fungsi penanggung jawab <span class="hint">satu per baris</span><textarea class="in" id="sPics" rows="6"></textarea></label>
-  <label class="f">Daftar area <span class="hint">satu per baris, format: Nama area | KODE</span><textarea class="in" id="sAreas" rows="6"></textarea></label>
   <label class="f">Agenda default<input class="in" id="sAgenda"></label>
   <div class="two">
     <label class="f">Daftar supervisor reviewer <span class="hint">satu nama per baris</span><textarea class="in" id="sSpv" rows="4"></textarea></label>
@@ -238,7 +237,6 @@
   <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-close>Tutup</button><button class="btn primary" id="btnCopyTxt">Salin</button></div>
 </div></div></div>
 
-<datalist id="dlArea"></datalist>
 <datalist id="dlPic"></datalist>
 <datalist id="dlSpv"></datalist>
 <div id="toastHost"></div>
