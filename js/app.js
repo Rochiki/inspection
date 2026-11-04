@@ -861,7 +861,6 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") $$(".modal")
 function openInspModal(i) {
   editingInsp = i || null;
   $("#mInspTitle").textContent = i ? "Ubah inspeksi" : "Inspeksi baru";
-  $("#dlArea").innerHTML = S.settings.areas.map(a => `<option value="${esc(a[0])}">`).join("");
   $("#iArea").value = i ? i.area : ""; $("#iKode").value = i ? (i.kode || "") : "";
   $("#iTgl").value = i ? i.tanggal : localISO(); $("#iAgenda").value = i ? (i.agenda || "") : S.settings.agenda;
   $("#iInspector").value = i ? (i.inspectors || []).join(", ") : (S.me.name || "");
@@ -987,7 +986,7 @@ function reviewHTML(w) {
 $("#btnSettings").onclick = () => {
   const s = S.settings;
   $("#sCrit").value = s.due.Critical; $("#sMajor").value = s.due.Major; $("#sMinor").value = s.due.Minor;
-  $("#sPics").value = s.pics.join("\n"); $("#sAreas").value = s.areas.map(a => a[0] + (a[1] ? " | " + a[1] : "")).join("\n"); $("#sAgenda").value = s.agenda;
+  $("#sPics").value = s.pics.join("\n"); $("#sAgenda").value = s.agenda;
   $("#sSpv").value = (s.supervisors || []).join("\n"); $("#sQshe").value = s.qsheName || ""; $("#sOneDrive").value = s.onedrive || "";
   const th = LS.get("qf:theme") || "auto"; $$("#segTheme button").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === th));
   renderFolderSettings(); openModal("#mSettings");
@@ -998,7 +997,7 @@ $("#btnSaveSettings").onclick = async () => {
   const n = (id, d) => Math.max(1, parseInt($(id).value, 10) || d);
   const obj = {
     due: { Critical: n("#sCrit", 7), Major: n("#sMajor", 14), Minor: n("#sMinor", 30) },
-    pics: lines($("#sPics").value), areas: lines($("#sAreas").value).map(l => { const [a, k] = l.split("|").map(x => x.trim()); return [a, (k || "").toUpperCase()]; }),
+    pics: lines($("#sPics").value), areas: S.settings.areas,
     agenda: $("#sAgenda").value.trim() || DEFAULT_SETTINGS.agenda,
     supervisors: lines($("#sSpv").value), qsheName: $("#sQshe").value.trim() || DEFAULT_SETTINGS.qsheName,
     onedrive: /^https:\/\//i.test($("#sOneDrive").value.trim()) ? $("#sOneDrive").value.trim() : "",
