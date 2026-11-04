@@ -15,13 +15,11 @@ QSHE Department
 ### Mencatat temuan
 
 1. Tab **Catat → Inspeksi baru**. Pilih area, isi tanggal dan nama inspector.
-2. Pilih **Temuan** atau **Good practice**.
-3. Ambil foto (maksimal 4). Foto pertama akan dipakai di slide laporan.
-4. Isi **Lokasi spesifik**, misalnya *rak APD workshop*.
-5. Tulis **catatan singkat** apa adanya, boleh pakai singkatan. Contoh: *kabel panel terkelupas, colokan ditumpuk2 pake roll kabel*.
-6. Tekan **Rapikan tanpa AI**. Aplikasi menyusun judul, deskripsi baku, tingkat temuan, klausul, dan regulasi.
-7. **Periksa hasilnya.** Hasil ini dari aturan kata kunci, jadi koreksi kalau ada yang kurang pas.
-8. Tekan **Kirim ke Supervisor**.
+2. Di langkah **Unggah foto**, pilih **semua foto sekaligus** (bisa puluhan). Tunggu sampai bilangan 100% dan tulisan "foto siap".
+3. Daftar keterangan muncul. Untuk tiap foto: pilih **Temuan** atau **Good practice**, isi **lokasi spesifik** (misalnya *rak APD workshop*), lalu tulis **catatan singkat** apa adanya. Contoh: *kabel panel terkelupas, colokan ditumpuk2 pake roll kabel*.
+4. Satu kejadian dengan beberapa foto: centang **Foto tambahan untuk entri di atasnya** (maksimal 4 foto per entri).
+5. Tekan **Rapikan & simpan semua**. Aplikasi menyusun judul, deskripsi baku, tingkat temuan, klausul, dan regulasi untuk semua foto sekaligus. Untuk langsung mengirim ke supervisor, tekan **Simpan & kirim ke Supervisor**.
+6. **Periksa hasilnya** di daftar entri (ketuk untuk membuka dan mengoreksi). Hasil ini dari aturan kata kunci.
 
 ### Persetujuan supervisor (di lokasi)
 

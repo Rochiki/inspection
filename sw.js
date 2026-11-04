@@ -3,13 +3,13 @@
    SETIAP KALI ADA PERUBAHAN FILE: naikkan angka VERSI di bawah (v1 -> v2 -> v3 ...)
    supaya HP dan laptop pengguna mengambil versi terbaru.
    ===================================================================== */
-const VERSI = "v1";
+const VERSI = "v2";
 const CACHE = "temuan-qshe-" + VERSI;
 const FILES = [
   "./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png",
   "./css/style.css", "./css/fonts.css",
-  "./js/data-klausul.js", "./js/data-ppt.js", "./js/rapikan.js", "./js/app.js",
-  "./lib/exceljs.min.js", "./lib/pptxgen.bundle.js", "./lib/chart.umd.js",
+  "./js/data-klausul.js", "./js/rapikan.js", "./js/app.js",
+  "./assets/template-ppt.pptx", "./lib/exceljs.min.js", "./lib/pptxgen.bundle.js", "./lib/chart.umd.js",
   "./fonts/barlow-latin-400-normal.woff2", "./fonts/barlow-latin-500-normal.woff2",
   "./fonts/barlow-latin-600-normal.woff2", "./fonts/barlow-latin-700-normal.woff2",
   "./fonts/barlow-condensed-latin-600-normal.woff2", "./fonts/barlow-condensed-latin-700-normal.woff2"

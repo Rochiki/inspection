@@ -19,7 +19,7 @@ Aplikasi milik **QSHE Department** untuk mencatat temuan inspeksi di lapangan da
 | `js/data-klausul.js` | Database klausul ISO, kriteria SMK3, dan regulasi | **Ya, paling sering** |
 | `js/rapikan.js` | Kamus bahasa lapangan dan 24 topik kata kunci untuk "Rapikan tanpa AI" | **Ya, paling sering** |
 | `js/app.js` | Logika aplikasi. Daftar area, PIC, dan supervisor bawaan ada di `DEFAULT_SETTINGS` (dekat baris 87) | Hati-hati |
-| `js/data-ppt.js`, `img/` | Latar slide PowerPoint | Jarang |
+| `assets/template-ppt.pptx` | Template PowerPoint perusahaan. Hal. 1–2 (cover) dan hal. penutup dipakai apa adanya; slide isi memakai latar & judul template. Ganti file ini untuk memperbarui template | Hati-hati |
 | `sw.js` | Mode offline. **Angka `VERSI` wajib dinaikkan setiap update** | Hanya angka VERSI |
 | `lib/`, `fonts/`, `licenses/` | Pustaka pihak ketiga, font, dan lisensinya | **Jangan diubah** |
 | `manifest.webmanifest`, `icon-*.png` | Nama dan ikon saat dipasang di HP | Jarang |
