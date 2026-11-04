@@ -470,7 +470,6 @@ document.addEventListener("click", async e => {
   installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; $("#btnInstall").hidden = true;
 });
 /* ======================= UI ======================= */
-const Cap = { jenis: "temuan", photos: [], editor: null, ctl: null };
 const REVIEW_LABEL = { Draft: "Draft", Review: "Menunggu Supervisor", QSHE: "Menunggu QSHE", Final: "Final" };
 
 function areaCode(area) {
@@ -657,13 +656,15 @@ function renderEditor(host, rec, o) {
   return { get: () => w, draw };
 }
 
-/* ---------------- capture view ---------------- */
-function baseRecord(insp) {
+/* ---------------- capture view: unggah banyak foto -> isi keterangan -> simpan semua ---------------- */
+function baseRecord(insp, o) {
+  o = o || {};
+  const jenis = o.jenis || "temuan";
   return {
-    id: uid("f_"), inspId: insp.id, no: "", jenis: Cap.jenis, area: insp.area, tanggal: insp.tanggal,
-    lokasi: $("#inLokasi").value.trim(), raw: $("#inRaw").value.trim(), photos: [], closePhotos: [],
+    id: uid("f_"), inspId: insp.id, no: "", jenis, area: insp.area, tanggal: insp.tanggal,
+    lokasi: o.lokasi || "", raw: o.raw || "", photos: [], closePhotos: [],
     judul: "", deskripsi: "", bahaya: "", potensi_risiko: "", kategori_aspek: ["K3"], kategori_temuan: "Operational",
-    klausul_iso: [], kriteria_smk3: [], regulasi: [], severity: Cap.jenis === "good" ? "" : "Minor", alasan_severity: "", stop_work: false,
+    klausul_iso: [], kriteria_smk3: [], regulasi: [], severity: jenis === "good" ? "" : "Minor", alasan_severity: "", stop_work: false,
     akar_masalah: { kategori: "", uraian: "" }, tindakan_segera: "", tindakan_korektif: [], tindakan_pencegahan: "", bukti_penutupan: "",
     pic: "", due: "", dueManual: false, status: "Open", closedDate: "", remarks: "", review: "Draft", reviewNote: "", catatan_konfirmasi: "",
     createdAt: Date.now(), createdBy: S.me.id || null
@@ -677,99 +678,153 @@ function nextNo(insp, jenis) {
   return `${insp.kode || areaCode(insp.area)}-${d}-${jenis === "good" ? "GP" : ""}${String(n).padStart(2, "0")}`;
 }
 
-function renderPhotoGrid() {
-  const g = $("#photoGrid");
-  g.innerHTML = Cap.photos.map((p, i) => `<div class="ph"><img alt="Foto ${i + 1}" src="${p.dataUrl}"><button type="button" data-rm="${i}" aria-label="Hapus foto">×</button></div>`).join("")
-    + (Cap.photos.length < 4 ? `<label class="ph-add" for="filePhoto"><span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>Ambil / pilih foto</span></label>` : "");
-  $$("[data-rm]", g).forEach(b => b.onclick = () => { Cap.photos.splice(+b.dataset.rm, 1); renderPhotoGrid(); });
-}
-$("#filePhoto").addEventListener("change", async e => {
-  const files = [...e.target.files].slice(0, 4 - Cap.photos.length); e.target.value = "";
-  for (const f of files) { try { Cap.photos.push(await compressImage(f)); } catch (err) { toast(err.message || "Foto gagal diproses", "err"); } }
-  renderPhotoGrid();
-});
-$$("#segJenis button").forEach(b => b.onclick = () => { Cap.jenis = b.dataset.v; $$("#segJenis button").forEach(x => x.setAttribute("aria-pressed", x === b)); $("#inRaw").placeholder = Cap.jenis === "good" ? "contoh: toolbox di lemari no. 1 sudah dikelompokkan per jenis & terkunci semua" : "contoh: sepatu safety di rak workshop solnya banyak yg getas & robek, masih dicampur sama yg bagus"; });
-
+const MAX_BATCH = 80, MIN_NOTE = 8;
+/* Cap.items: satu elemen per foto yang sudah diunggah. Disimpan di memori sampai ditekan "Simpan semua". */
+const Cap = { items: [], busy: false, saving: false };
 function currentInsp() { return inspById(S.currentInsp); }
 function requireInsp() {
   const i = currentInsp(); if (i) return i;
   toast("Buat atau pilih inspeksi dulu, supaya temuan tercatat di area & tanggal yang benar.", "err"); openInspModal(); return null;
 }
 
-$("#btnAI").onclick = async () => {
-  const insp = requireInsp(); if (!insp) return;
-  const raw = $("#inRaw").value.trim();
-  if (raw.length < 8 && !Cap.photos.length) { toast("Tulis catatan singkat (minimal satu kalimat) atau lampirkan foto.", "err"); $("#inRaw").focus(); return; }
-  Cap.ctl = new AbortController();
-  const area = $("#aiArea"); const t0 = Date.now();
-  area.innerHTML = `<div class="ai-busy"><div style="flex:1"><div class="small" id="aiMsg">Menganalisis catatan${Cap.photos.length ? " dan foto" : ""}… biasanya 20–60 detik</div><div class="bar" style="margin-top:8px"></div></div><button class="btn" id="btnStop">Batalkan</button></div>`;
-  $("#btnStop").onclick = () => Cap.ctl && Cap.ctl.abort();
-  $("#btnAI").disabled = true;
-  try {
-    const rec = baseRecord(insp); if (!raw && Cap.photos.length) rec.raw = "(lihat foto)";
-    const ai = await runFindingAI({ jenis: Cap.jenis, area: insp.area, lokasi: rec.lokasi, tanggal: fmtTgl(insp.tanggal), raw: rec.raw }, Cap.photos, Cap.ctl.signal,
-      n => { const m = $("#aiMsg"); if (m) m.textContent = `Menyusun laporan… ${Math.round((Date.now() - t0) / 1000)} detik`; });
-    Object.assign(rec, ai);
-    rec.pic = ai.pic_saran || ""; delete rec.pic_saran;
-    if (rec.jenis !== "good") rec.due = addDays(insp.tanggal, S.settings.due[rec.severity] || 30);
-    if (!rec.lokasi && ai.lokasi) rec.lokasi = ai.lokasi;
-    openCaptureEditor(rec);
-    area.innerHTML = "";
-  } catch (e) {
-    area.innerHTML = e && e.code === "cancelled" ? "" : `<div class="note" style="border-left-color:var(--crit)">${esc(aiErrMsg(e))}</div>`;
-  } finally { $("#btnAI").disabled = !AI.fn; Cap.ctl = null; }
-};
-$("#btnManual").onclick = () => {
-  const insp = requireInsp(); if (!insp) return;
-  const rec = baseRecord(insp); rec.deskripsi = rec.raw;
-  openCaptureEditor(rec);
-};
-
-$("#btnRapi").onclick = () => {
-  const insp = requireInsp(); if (!insp) return;
-  const raw = $("#inRaw").value.trim();
-  if (raw.length < 8) { toast("Tulis catatan singkat (minimal satu kalimat) dulu.", "err"); $("#inRaw").focus(); return; }
-  const rec = baseRecord(insp);
-  const r = RAPI.susun({ jenis: rec.jenis, area: insp.area, lokasi: rec.lokasi, raw });
-  Object.assign(rec, r.fields);
-  const ch = r.changes.slice(0, 14).map(([a, b]) => `<span style="white-space:nowrap"><s>${esc(a)}</s> → <b>${esc(b)}</b></span>`).join(", ");
-  $("#aiArea").innerHTML = `<div class="note small">${r.topics.length ? `<b>Topik terdeteksi:</b> ${esc(r.topics.join(", "))}.<br>` : ""}${ch ? `<b>Perbaikan bahasa:</b> ${ch}${r.changes.length > 14 ? ", …" : ""}` : "Tidak ada kata tidak baku yang perlu diganti."}</div>`;
-  openCaptureEditor(rec);
-};
-
-function openCaptureEditor(rec) {
-  const host = $("#editorHost");
-  Cap.editor = renderEditor(host, rec, {
-    mode: "new",
-    footHTML: w => `<button class="btn ghost" data-act="discard">Buang</button><button class="btn" data-act="draft">Simpan draft</button><button class="btn primary" data-act="review">Kirim ke Supervisor</button>`,
-    onBind: (h) => {
-      $$("[data-act]", h).forEach(b => b.onclick = async () => {
-        if (b.dataset.act === "discard") { if (confirm("Buang hasil ini? Foto dan catatan di formulir kiri tetap ada.")) { host.innerHTML = ""; Cap.editor = null; } return; }
-        await saveCaptured(b.dataset.act === "review" ? "Review" : "Draft", b);
-      });
-    }
-  });
-  host.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+function setUploadProgress(done, total, failed) {
+  const box = $("#upProgress");
+  if (total == null) { box.innerHTML = ""; return; }
+  const pct = total ? Math.round(done / total * 100) : 0;
+  box.innerHTML = `<div class="up-prog"><div class="row between"><span>${done < total ? `Mengunggah foto ${done} dari ${total}…` : `${total - (failed || 0)} foto siap`}${failed ? ` <span style="color:var(--crit)">(${failed} gagal)</span>` : ""}</span><span class="muted">${pct}%</span></div><div class="track"><i style="width:${pct}%"></i></div></div>`;
 }
-async function saveCaptured(review, btn) {
-  const insp = currentInsp(); if (!insp || !Cap.editor) return;
-  const w = Cap.editor.get();
-  if (!w.judul.trim()) { toast("Judul temuan masih kosong.", "err"); return; }
-  $$("#editorHost .sheet-foot button").forEach(b => b.disabled = true); btn.textContent = "Menyimpan…";
+async function ingestFiles(fileList) {
+  if (Cap.busy || Cap.saving) return;
+  if (!requireInsp()) return;
+  const imgs = [...fileList].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|heic|heif)$/i.test(f.name));
+  if (!imgs.length) { toast("Tidak ada file foto yang dipilih.", "err"); return; }
+  const room = MAX_BATCH - Cap.items.length;
+  if (room <= 0) { toast(`Maksimal ${MAX_BATCH} foto per kali simpan. Simpan dulu foto yang sudah ada.`, "err"); return; }
+  const files = imgs.slice(0, room);
+  if (imgs.length > room) toast(`Hanya ${room} foto pertama yang dimasukkan (maksimal ${MAX_BATCH} per kali simpan).`, "err");
+  Cap.busy = true; $("#dropZone").classList.add("busy");
+  let done = 0, failed = 0; setUploadProgress(0, files.length);
+  for (const f of files) {
+    try { const c = await compressImage(f); Cap.items.push({ key: uid("n_"), photo: c, jenis: "temuan", lokasi: "", raw: "", merge: false }); }
+    catch (err) { failed++; console.error(err); }
+    done++; setUploadProgress(done, files.length, failed);
+  }
+  Cap.busy = false; $("#dropZone").classList.remove("busy");
+  if (failed) toast(`${failed} foto gagal diproses (format tidak didukung atau terlalu besar).`, "err");
+  renderNotes(); /* form keterangan baru muncul SETELAH semua foto selesai diunggah */
+  const first = $("#stepNotes"); if (!first.hidden) first.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+}
+$("#filePhoto").addEventListener("change", e => { const fl = [...e.target.files]; e.target.value = ""; ingestFiles(fl); });
+(() => {
+  const dz = $("#dropZone");
+  ["dragenter", "dragover"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove("over"); }));
+  dz.addEventListener("drop", e => { if (e.dataTransfer && e.dataTransfer.files) ingestFiles(e.dataTransfer.files); });
+})();
+
+function noteCardHTML(it, i) {
+  const good = it.jenis === "good";
+  const canMerge = i > 0;
+  return `<article class="ncard ${it.merge ? "merged" : ""}" data-key="${esc(it.key)}">
+    <div class="ncard-ph"><img alt="Foto ${i + 1}" src="${it.photo.dataUrl}"><span class="num">${i + 1}</span><button type="button" data-rm aria-label="Hapus foto ${i + 1}">×</button></div>
+    <div class="ncard-body">
+      ${it.merge ? `<div class="mnote">Foto ini dipakai sebagai foto tambahan pada entri di atasnya.</div>` : `
+      <div class="ntop"><div class="seg sm" data-jenis><button type="button" data-v="temuan" aria-pressed="${!good}">Temuan</button><button type="button" data-v="good" aria-pressed="${good}">Good practice</button></div></div>
+      <input class="in" data-f="lokasi" value="${esc(it.lokasi)}" placeholder="Lokasi spesifik — contoh: rak safety shoes, workshop" autocomplete="off" aria-label="Lokasi foto ${i + 1}">
+      <textarea class="in" data-f="raw" rows="3" placeholder="${good ? "Catatan singkat — contoh: toolbox di lemari no. 1 sudah dikelompokkan per jenis & terkunci" : "Catatan singkat — contoh: sepatu safety di rak solnya banyak yg getas & robek, masih dicampur sama yg bagus"}" aria-label="Catatan foto ${i + 1}">${esc(it.raw)}</textarea>`}
+      ${canMerge ? `<label class="mrg"><input type="checkbox" data-merge ${it.merge ? "checked" : ""}> Foto tambahan untuk entri di atasnya</label>` : ""}
+    </div></article>`;
+}
+function updateNotesHint() {
+  const act = Cap.items.filter(x => !x.merge);
+  const filled = act.filter(x => String(x.raw).trim().length >= MIN_NOTE).length;
+  $("#notesCount").textContent = `— ${Cap.items.length} foto`;
+  $("#notesHint").textContent = act.length === filled ? `${act.length} entri siap dirapikan.` : `${filled} dari ${act.length} entri sudah ada keterangannya.`;
+}
+function renderNotes() {
+  const box = $("#stepNotes");
+  box.hidden = !Cap.items.length;
+  if (!Cap.items.length) { $("#noteList").innerHTML = ""; return; }
+  $("#noteList").innerHTML = Cap.items.map(noteCardHTML).join("");
+  updateNotesHint();
+}
+$("#noteList").addEventListener("input", e => {
+  const card = e.target.closest(".ncard"); if (!card) return;
+  const it = Cap.items.find(x => x.key === card.dataset.key); if (!it) return;
+  const f = e.target.dataset.f; if (f) { it[f] = e.target.value; card.classList.remove("bad"); updateNotesHint(); }
+});
+$("#noteList").addEventListener("change", e => {
+  const card = e.target.closest(".ncard"); if (!card) return;
+  const it = Cap.items.find(x => x.key === card.dataset.key); if (!it) return;
+  if (e.target.matches("[data-merge]")) { it.merge = e.target.checked; renderNotes(); }
+});
+$("#noteList").addEventListener("click", e => {
+  const card = e.target.closest(".ncard"); if (!card) return;
+  const idx = Cap.items.findIndex(x => x.key === card.dataset.key); if (idx < 0) return;
+  const jb = e.target.closest("[data-jenis] button");
+  if (jb) { Cap.items[idx].jenis = jb.dataset.v; renderNotes(); return; }
+  if (e.target.closest("[data-rm]")) {
+    Cap.items.splice(idx, 1);
+    if (Cap.items[0]) Cap.items[0].merge = false; /* foto pertama tidak bisa jadi foto tambahan */
+    renderNotes(); setUploadProgress(); 
+  }
+});
+$("#btnClearAll").onclick = () => { if (Cap.items.length && confirm(`Buang ${Cap.items.length} foto yang belum disimpan?`)) { Cap.items = []; renderNotes(); setUploadProgress(); } };
+window.addEventListener("beforeunload", e => { if (Cap.items.length && !Cap.saving) { e.preventDefault(); e.returnValue = ""; } });
+
+/* kelompokkan foto: foto bertanda "tambahan" ikut ke entri di atasnya (maks. 4 foto per entri) */
+function groupItems() {
+  const groups = [];
+  Cap.items.forEach(it => {
+    const g = groups[groups.length - 1];
+    if (it.merge && g && g.photos.length < 4) g.photos.push(it.photo); else groups.push({ ...it, photos: [it.photo] });
+  });
+  return groups;
+}
+async function saveAll(review, btn) {
+  if (Cap.saving || Cap.busy) return;
+  const insp = requireInsp(); if (!insp) return;
+  const groups = groupItems();
+  const bad = groups.filter(g => String(g.raw).trim().length < MIN_NOTE);
+  if (bad.length) {
+    $$(".ncard.bad").forEach(c => c.classList.remove("bad"));
+    bad.forEach(g => { const c = $(`.ncard[data-key="${g.key}"]`); if (c) c.classList.add("bad"); });
+    const c0 = $(`.ncard[data-key="${bad[0].key}"]`); if (c0) { c0.scrollIntoView({ block: "center" }); const t = c0.querySelector("textarea"); if (t) t.focus({ preventScroll: true }); }
+    toast(`${bad.length} foto belum ada keterangannya (minimal satu kalimat singkat).`, "err"); return;
+  }
+  Cap.saving = true; const all = $$("#stepNotes button, #stepNotes input, #stepNotes textarea"); all.forEach(x => x.disabled = true);
+  const lbl = btn.innerHTML; const lokAll = $("#inLokasiAll").value.trim();
+  let n = 0, fail = 0, last = ""; const okG = [];
   try {
-    const photos = [];
-    for (const p of Cap.photos) { const id = uid("ph_"); await Store.putPhoto(id, p.dataUrl); photos.push({ id, w: p.w, h: p.h }); }
-    const rec = { ...w, photos, review, no: nextNo(insp, w.jenis), lokasi: w.lokasi || $("#inLokasi").value.trim() };
-    if (review === "Review") rec.sentAt = Date.now();
-    await Store.put("findings", rec);
-    toast(review === "Review" ? `${rec.no} dikirim ke Supervisor untuk review.` : `${rec.no} tersimpan sebagai draft.`);
-    Cap.photos = []; renderPhotoGrid(); $("#inRaw").value = ""; $("#inLokasi").value = "";
-    $("#editorHost").innerHTML = ""; Cap.editor = null; $("#aiArea").innerHTML = "";
-  } catch (e) {
-    toast(e.message || "Gagal menyimpan.", "err");
-    $$("#editorHost .sheet-foot button").forEach(b => b.disabled = false); btn.textContent = review === "Review" ? "Kirim ke Supervisor" : "Simpan draft";
+    for (const g of groups) {
+      btn.textContent = `Menyimpan ${n + fail + 1} dari ${groups.length}…`;
+      try {
+        const rec = baseRecord(insp, { jenis: g.jenis, lokasi: String(g.lokasi).trim() || lokAll, raw: String(g.raw).trim() });
+        Object.assign(rec, RAPI.susun({ jenis: rec.jenis, area: insp.area, lokasi: rec.lokasi, raw: rec.raw }).fields);
+        const photos = [];
+        for (const p of g.photos) { const id = uid("ph_"); await Store.putPhoto(id, p.dataUrl); photos.push({ id, w: p.w, h: p.h }); }
+        rec.photos = photos; rec.review = review; rec.no = nextNo(insp, rec.jenis);
+        if (review === "Review") rec.sentAt = Date.now();
+        await Store.put("findings", rec); n++; okG.push(g); last = rec.no;
+      } catch (err) { fail++; console.error(err); last = err.message || last; }
+    }
+  } finally { Cap.saving = false; }
+  if (fail) {
+    /* yang gagal tetap di daftar supaya bisa dicoba lagi: buang hanya yang sudah tersimpan */
+    toast(`${n} entri tersimpan, ${fail} gagal${last ? " — " + last : ""}. Yang gagal masih ada di daftar; coba simpan lagi.`, "err");
+    const saved = okG.flatMap(g => g.photos);
+    Cap.items = Cap.items.filter(it => !saved.includes(it.photo));
+    if (Cap.items[0]) Cap.items[0].merge = false;
+    renderNotes(); btn.innerHTML = lbl; all.forEach(x => x.disabled = false);
+  } else {
+    Cap.items = []; renderNotes(); setUploadProgress(); $("#inLokasiAll").value = "";
+    btn.innerHTML = lbl; all.forEach(x => x.disabled = false);
+    toast(review === "Review" ? `${n} entri dirapikan dan dikirim ke Supervisor.` : `${n} entri dirapikan dan tersimpan sebagai draft. Ketuk entri untuk memeriksa atau mengubahnya.`);
+    const sp = $("#sessionPanel"); if (sp) sp.scrollIntoView({ block: "start" });
   }
 }
+$("#btnSaveAll").onclick = e => saveAll("Draft", e.currentTarget);
+$("#btnSaveSpv").onclick = e => saveAll("Review", e.currentTarget);
 
 function renderInspSelect() {
   const sel = $("#selInsp"); const list = sortedInsps();
@@ -790,7 +845,7 @@ function renderSession() {
   $("#sessTitle").textContent = `Entri di ${i.area}`;
   const nT = items.filter(f => f.jenis !== "good").length;
   $("#sessCount").textContent = `${nT} temuan, ${items.length - nT} good practice`;
-  box.innerHTML = items.length ? items.map(fcardHTML).join("") : `<div class="empty">Belum ada entri. Foto kondisi di lapangan, tulis catatan singkat, lalu tekan <b>Rapikan jadi laporan</b>.</div>`;
+  box.innerHTML = items.length ? items.map(fcardHTML).join("") : `<div class="empty">Belum ada entri. Unggah semua foto kondisi di lapangan, isi keterangan singkat tiap foto, lalu tekan <b>Rapikan &amp; simpan semua</b>.</div>`;
   hydrateThumbs(box);
 }
 
@@ -1266,175 +1321,155 @@ function stdLines(f, long) {
 }
 function caLines(f) { return (f.tindakan_korektif || []).map(c => `[${c.hierarki}] ${c.tindakan}`); }
 
-/* ======================= EXCEL ======================= */
+/* ======================= EXCEL (format template "Inspection Monitoring") ======================= */
 function colLetter(n) { let s = ""; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; }
 function xDate(iso) { const d = parseISO(iso); return d ? new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())) : null; }
 async function buildExcel(items, goods, meta) {
   await loadScript(LIBS.excel);
   const wb = new ExcelJS.Workbook(); wb.creator = "QSHE Department"; wb.created = new Date();
   wb.calcProperties.fullCalcOnLoad = true;
-  const ORG = "FFF36F20", BLK = "FF13294B", WHT = "FFFFFFFF", GRY = "FFF2F3F4", LINE = "FFBFC4C9";
-  const SEVF = { Critical: "FFC4162A", Major: "FFC77700", Minor: "FF2A6496" };
-  const border = { top: { style: "thin", color: { argb: LINE } }, left: { style: "thin", color: { argb: LINE } }, bottom: { style: "thin", color: { argb: LINE } }, right: { style: "thin", color: { argb: LINE } } };
-
-  const COLS = [
-    ["No", "no", 5], ["ID Temuan", "id", 18], ["Tanggal", "tgl", 11], ["Area", "area", 16], ["Lokasi", "lokasi", 18], ["Aspek", "aspek", 12],
-    ["Standard", "std", 15], ["Clause", "clause", 16], ["Kriteria SMK3 (PP 50/2012)", "smk3", 30], ["Regulasi Terkait", "reg", 36],
-    ["Category Finding", "sev", 11], ["Compliance", "c1", 7], ["Operational", "c2", 7], ["Administration", "c3", 7],
-    ["Judul", "judul", 28], ["Finding", "finding", 52], ["Potensi Risiko", "risk", 30], ["Root Cause (dugaan awal)", "rc", 30],
-    ["Tindakan Segera", "imm", 30], ["Corrective Action", "ca", 46], ["Preventive Action", "pa", 30], ["Bukti Penutupan", "evreq", 26],
-    ["PIC", "pic", 16], ["Inspector", "insp", 16], ["Due Date", "due", 11], ["Status", "status", 12], ["Closed Date", "closed", 11],
-    ["Remarks", "remarks", 28], ["Foto Temuan", "ph", 24], ["Foto Penutupan", "ph2", 24], ["Tahap Review", "review", 13]
-  ];
-  const ci = k => COLS.findIndex(c => c[1] === k) + 1, L = k => colLetter(ci(k));
-  const last = colLetter(COLS.length), R0 = 7;
-  const ws = wb.addWorksheet("Register Temuan", { views: [{ state: "frozen", xSplit: 2, ySplit: 6, zoomScale: 90 }], pageSetup: { orientation: "landscape", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 } }, properties: { tabColor: { argb: ORG } } });
-  COLS.forEach((c, i) => ws.getColumn(i + 1).width = c[2]);
-  ws.mergeCells(`A1:${last}1`); ws.getCell("A1").value = "REGISTER TEMUAN INSPEKSI QSHE";
-  ws.getCell("A1").font = { name: "Arial", size: 16, bold: true, color: { argb: WHT } }; ws.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: ORG } };
-  ws.getCell("A1").alignment = { vertical: "middle", indent: 1 }; ws.getRow(1).height = 30;
-  ws.mergeCells(`A2:${last}2`); ws.getCell("A2").value = `QSHE Department — ${meta.title}`; ws.getCell("A2").font = { name: "Arial", size: 11, bold: true };
-  ws.mergeCells(`A3:${last}3`);
+  const NAVY = "FF002060", WHT = "FFFFFFFF", GRY = "FFF2F2F2", LINE = "FFA6A6A6", RED = "FFC00000", FONT = "Calibri";
+  const thin = { style: "thin", color: { argb: LINE } }, med = { style: "medium", color: { argb: "FF000000" } };
+  const allThin = { top: thin, left: thin, bottom: thin, right: thin };
+  const solid = argb => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
+  const px = { col: w => Math.round(w * 7 + 5), row: h => Math.round(h * 96 / 72) };
+  const EMU = 9525;
   const insp = meta.insp;
-  ws.getCell("A3").value = (insp ? `Agenda: ${insp.agenda || "-"}   |   Inspector: ${(insp.inspectors || []).join(", ") || "-"}   |   Inspectee: ${(insp.inspectees || []).join(", ") || "-"}   |   ` : "") + `Dicetak: ${fmtTgl(localISO())}` + (meta.isDraft ? "   |   DRAFT — untuk review tim" : "   |   Status: Final");
-  ws.getCell("A3").font = { name: "Arial", size: 9, color: { argb: meta.isDraft ? "FFC4162A" : "FF5E656D" }, bold: !!meta.isDraft };
+  const locText = insp ? insp.area : "Semua area";
+  const inspText = insp ? ((insp.inspectors || []).join(", ") || "-") : [...new Set(items.concat(goods).map(f => (inspById(f.inspId) || {}).inspectors || []).flat())].join(", ") || "-";
 
-  // header (2 rows, "Category" grouped like the audit summary format)
-  const r5 = ws.getRow(5), r6 = ws.getRow(6);
-  COLS.forEach((c, i) => {
-    const col = i + 1;
-    if (["c1", "c2", "c3"].includes(c[1])) { r6.getCell(col).value = c[0]; }
-    else { ws.mergeCells(5, col, 6, col); r5.getCell(col).value = c[0]; }
-  });
-  ws.mergeCells(5, ci("c1"), 5, ci("c3")); r5.getCell(ci("c1")).value = "Category";
-  [r5, r6].forEach(r => { for (let c = 1; c <= COLS.length; c++) { const cell = r.getCell(c); cell.font = { name: "Arial", size: 9, bold: true, color: { argb: WHT } }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLK } }; cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true }; cell.border = border; } });
-  r6.getCell(ci("c1")).fill = r6.getCell(ci("c2")).fill = r6.getCell(ci("c3")).fill = r5.getCell(ci("c1")).fill = { type: "pattern", pattern: "solid", fgColor: { argb: ORG } };
-  r5.height = 18; r6.height = 30;
+  /* kolom: [judul, lebar] — urutan & judul mengikuti template (Photo Before disatukan dengan Evidence Photo, Related Dept tidak dipakai) */
+  const NEED = [["No.", 6], ["Location & Date", 22], ["Deskripsi", 46], ["Evidence\nPhoto", 42], ["Remarks", 36], ["Improvement plan", 40], ["Photo", 36], ["Due date", 15], ["PIC", 18], ["Status - Remark", 28]];
+  const GOOD = NEED.slice(0, 5);
 
-  const imgBox = async (list, colKey, rowNo) => {
-    const p = (list || [])[0]; if (!p) return;
-    const d = await Store.getPhoto(p.id); if (!d) return;
-    const id = wb.addImage({ base64: d, extension: "jpeg" });
-    const maxW = COLS[ci(colKey) - 1][2] * 7 - 8, maxH = 118; const r = Math.min(maxW / (p.w || 4), maxH / (p.h || 3));
-    ws.addImage(id, { tl: { col: ci(colKey) - 1 + 0.08, row: rowNo - 1 + 0.08 }, ext: { width: Math.round((p.w || 4) * r), height: Math.round((p.h || 3) * r) }, editAs: "oneCell" });
-  };
+  const textLines = (s, w) => { const cpl = Math.max(6, Math.floor(w * 1.05)); return String(s || "").split("\n").reduce((n, l) => n + Math.max(1, Math.ceil(l.length / cpl)), 0); };
 
-  for (let i = 0; i < items.length; i++) {
-    const f = items[i]; const rn = R0 + i; const row = ws.getRow(rn);
-    const insp2 = inspById(f.inspId);
-    const std = [...new Set((f.klausul_iso || []).map(k => k.standar))];
-    const v = {
-      no: i + 1, id: f.no, tgl: xDate(f.tanggal), area: f.area, lokasi: f.lokasi, aspek: (f.kategori_aspek || []).join(", "),
-      std: std.concat((f.kriteria_smk3 || []).length ? ["SMK3 PP 50/2012"] : []).join("\n"), clause: (f.klausul_iso || []).map(k => `${k.standar} Kl. ${k.klausul}${k.judul ? " – " + k.judul : ""}`).join("\n"),
-      smk3: (f.kriteria_smk3 || []).map(k => `${k.kode} ${k.ringkas}`).join("\n"), reg: (f.regulasi || []).map(r => `${r.peraturan}${r.pasal ? ", " + r.pasal : ""}${r.perlu_verifikasi ? " (perlu verifikasi)" : ""}`).join("\n"),
-      sev: f.severity, c1: f.kategori_temuan === "Compliance" ? "X" : "", c2: f.kategori_temuan === "Operational" ? "X" : "", c3: f.kategori_temuan === "Administration" ? "X" : "",
-      judul: f.judul, finding: f.deskripsi + (f.stop_work ? "\n[STOP WORK — area/pekerjaan dihentikan]" : ""), risk: f.potensi_risiko,
-      rc: [(f.akar_masalah || {}).kategori, (f.akar_masalah || {}).uraian].filter(Boolean).join(": "), imm: f.tindakan_segera,
-      ca: caLines(f).map((x, j) => `${j + 1}. ${x}`).join("\n"), pa: f.tindakan_pencegahan, evreq: f.bukti_penutupan,
-      pic: f.pic, insp: (insp2 && insp2.inspectors || []).join(", "), due: xDate(f.due), status: f.status || "Open", closed: xDate(f.closedDate),
-      remarks: f.remarks, ph: "", ph2: "", review: REVIEW_LABEL[f.review || "Draft"]
-    };
-    COLS.forEach((c, j) => { const cell = row.getCell(j + 1); cell.value = v[c[1]] ?? ""; cell.font = { name: "Arial", size: 9 }; cell.alignment = { vertical: "top", wrapText: true, horizontal: ["no", "c1", "c2", "c3", "sev", "status", "tgl", "due", "closed", "review"].includes(c[1]) ? "center" : "left" }; cell.border = border; });
-    ["tgl", "due", "closed"].forEach(k => row.getCell(ci(k)).numFmt = "dd/mm/yyyy");
-    row.getCell(ci("id")).font = { name: "Arial", size: 9, bold: true };
-    row.getCell(ci("judul")).font = { name: "Arial", size: 9, bold: true };
-    row.height = (f.photos || []).length || (f.closePhotos || []).length ? 96 : Math.min(160, Math.max(48, Math.ceil(String(v.finding).length / 60) * 12 + 10));
-    await imgBox(f.photos, "ph", rn); await imgBox(f.closePhotos, "ph2", rn);
-  }
-  const RN = Math.max(R0, R0 + items.length - 1), RMAX = R0 + Math.max(items.length, 1) + 300;
-  if (!items.length) { ws.mergeCells(`A${R0}:${last}${R0}`); ws.getCell(`A${R0}`).value = "Tidak ada temuan pada filter ini."; ws.getCell(`A${R0}`).font = { name: "Arial", size: 9, italic: true }; }
-  ws.autoFilter = { from: { row: 6, column: 1 }, to: { row: 6, column: COLS.length } };
-  // validations so the sheet stays usable as a live tracker
-  const rng = k => `${L(k)}${R0}:${L(k)}${RMAX}`;
-  ws.dataValidations.add(rng("sev"), { type: "list", allowBlank: true, formulae: ['"Critical,Major,Minor"'] });
-  ws.dataValidations.add(rng("status"), { type: "list", allowBlank: false, formulae: ['"Open,On Progress,Closed"'], showErrorMessage: true, errorTitle: "Status", error: "Pilih Open, On Progress, atau Closed." });
-  ws.dataValidations.add(rng("review"), { type: "list", allowBlank: true, formulae: ['"Draft,Menunggu Supervisor,Menunggu QSHE,Final"'] });
-  const fill = argb => ({ type: "pattern", pattern: "solid", bgColor: { argb } });
-  ws.addConditionalFormatting({ ref: rng("sev"), rules: SEVS.map((s, k) => ({ type: "expression", priority: k + 1, formulae: [`$${L("sev")}${R0}="${s}"`], style: { fill: fill(SEVF[s]), font: { color: { argb: WHT }, bold: true } } })) });
-  ws.addConditionalFormatting({ ref: rng("status"), rules: [
-    { type: "expression", priority: 4, formulae: [`$${L("status")}${R0}="Closed"`], style: { fill: fill("FFE3F2E8"), font: { color: { argb: "FF2B7A4B" }, bold: true } } },
-    { type: "expression", priority: 5, formulae: [`$${L("status")}${R0}="On Progress"`], style: { fill: fill("FFFFF0D9"), font: { color: { argb: "FFA35E00" }, bold: true } } },
-    { type: "expression", priority: 6, formulae: [`$${L("status")}${R0}="Open"`], style: { fill: fill("FFFBE7E9"), font: { color: { argb: "FFC4162A" }, bold: true } } }] });
-  ws.addConditionalFormatting({ ref: rng("due"), rules: [{ type: "expression", priority: 7, formulae: [`AND($${L("status")}${R0}<>"Closed",$${L("due")}${R0}<>"",$${L("due")}${R0}<TODAY())`], style: { fill: fill("FFC4162A"), font: { color: { argb: WHT }, bold: true } } }] });
-
-  /* ---- Rekap sheet (live formulas) ---- */
-  const rk = wb.addWorksheet("Rekap", { properties: { tabColor: { argb: BLK } }, views: [{ showGridLines: false }], pageSetup: { orientation: "portrait", paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 } });
-  rk.columns = [{ width: 30 }, { width: 11 }, { width: 11 }, { width: 13 }, { width: 11 }, { width: 16 }, { width: 12 }];
-  rk.mergeCells("A1:G1"); rk.getCell("A1").value = "REKAP STATUS TINDAK LANJUT"; rk.getCell("A1").font = { name: "Arial", size: 14, bold: true, color: { argb: WHT } }; rk.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: ORG } }; rk.getRow(1).height = 26;
-  rk.getCell("A2").value = `Sumber: sheet Register Temuan (baris ${R0}–${RMAX}). Angka otomatis berubah bila status di register diubah.`; rk.getCell("A2").font = { name: "Arial", size: 9, italic: true, color: { argb: "FF5E656D" } };
-  const RG = k => `'Register Temuan'!$${L(k)}$${R0}:$${L(k)}$${RMAX}`;
-  const hdr = ["", "Jumlah", "Open", "On Progress", "Closed", "Lewat batas waktu", "% Closed"];
-  let r = 4;
-  const block = (title, keys, critFn, label) => {
-    rk.getCell(`A${r}`).value = title; rk.getCell(`A${r}`).font = { name: "Arial", size: 11, bold: true }; r++;
-    const hr = rk.getRow(r); hdr.forEach((h, j) => { const c = hr.getCell(j + 1); c.value = j ? h : label; c.font = { name: "Arial", size: 9, bold: true, color: { argb: WHT } }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLK } }; c.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; c.border = border; });
-    r++; const first = r;
-    keys.forEach(k => {
-      const row = rk.getRow(r); const crit = critFn(r);
-      row.getCell(1).value = k;
-      row.getCell(2).value = { formula: `COUNTIFS(${crit})` };
-      row.getCell(3).value = { formula: `COUNTIFS(${crit},${RG("status")},"Open")` };
-      row.getCell(4).value = { formula: `COUNTIFS(${crit},${RG("status")},"On Progress")` };
-      row.getCell(5).value = { formula: `COUNTIFS(${crit},${RG("status")},"Closed")` };
-      row.getCell(6).value = { formula: `COUNTIFS(${crit},${RG("status")},"<>Closed",${RG("due")},"<"&TODAY())` };
-      row.getCell(7).value = { formula: `IF(B${r}=0,0,E${r}/B${r})` }; row.getCell(7).numFmt = "0%";
-      for (let j = 1; j <= 7; j++) { const c = row.getCell(j); c.font = { name: "Arial", size: 9, bold: j === 1 }; c.border = border; if (j > 1) c.alignment = { horizontal: "center" }; }
-      if (SEVF[k]) { row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: SEVF[k] } }; row.getCell(1).font = { name: "Arial", size: 9, bold: true, color: { argb: WHT } }; }
-      r++;
+  /* tempel 1–4 foto ke satu sel, tersusun rapi (1 foto penuh, 2 foto berdampingan, 3–4 foto grid 2×2) */
+  async function putPhotos(ws, list, col0, row0, boxW, boxH) {
+    const ph = []; for (const p of (list || []).slice(0, 4)) { const d = await Store.getPhoto(p.id); if (d) ph.push({ d, w: p.w || 4, h: p.h || 3 }); }
+    if (!ph.length) return false;
+    const n = ph.length, cols = n === 1 ? 1 : 2, rows = n <= 2 ? 1 : 2, gap = 4;
+    const sw = (boxW - gap * (cols - 1)) / cols, sh = (boxH - gap * (rows - 1)) / rows;
+    ph.forEach((p, k) => {
+      const r = Math.min(sw / p.w, sh / p.h), w = Math.floor(p.w * r), h = Math.floor(p.h * r);
+      const cx = k % cols, cy = Math.floor(k / cols);
+      const x = 4 + cx * (sw + gap) + (sw - w) / 2, y = 4 + cy * (sh + gap) + (sh - h) / 2;
+      const id = wb.addImage({ base64: p.d, extension: "jpeg" });
+      ws.addImage(id, { tl: { nativeCol: col0, nativeColOff: Math.round(x * EMU), nativeRow: row0, nativeRowOff: Math.round(y * EMU) }, ext: { width: w, height: h }, editAs: "oneCell" });
     });
-    const tr = rk.getRow(r); tr.getCell(1).value = "Total";
-    for (let j = 2; j <= 6; j++) tr.getCell(j).value = { formula: `SUM(${colLetter(j)}${first}:${colLetter(j)}${r - 1})` };
-    tr.getCell(7).value = { formula: `IF(B${r}=0,0,E${r}/B${r})` }; tr.getCell(7).numFmt = "0%";
-    for (let j = 1; j <= 7; j++) { const c = tr.getCell(j); c.font = { name: "Arial", size: 9, bold: true }; c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: GRY } }; c.border = border; if (j > 1) c.alignment = { horizontal: "center" }; }
-    r += 3;
-  };
-  block("Per Tingkat Temuan", SEVS, rr => `${RG("sev")},$A${rr}`, "Tingkat");
-  const pics = [...new Set(items.map(f => f.pic || "").filter(Boolean))].sort();
-  if (pics.length) block("Per PIC", pics, rr => `${RG("pic")},$A${rr}`, "PIC");
-  const areas = [...new Set(items.map(f => f.area || "").filter(Boolean))].sort();
-  if (areas.length > 1) block("Per Area", areas, rr => `${RG("area")},$A${rr}`, "Area");
-  block("Per Aspek", ["K3", "Lingkungan", "Mutu"], rr => `${RG("aspek")},"*"&$A${rr}&"*"`, "Aspek");
-
-  /* ---- Good practice sheet ---- */
-  if (goods.length) {
-    const gs = wb.addWorksheet("Good Practice", { properties: { tabColor: { argb: "FF2B7A4B" } }, views: [{ state: "frozen", ySplit: 3 }] });
-    const GC = [["No", 5], ["ID", 18], ["Tanggal", 11], ["Area", 16], ["Lokasi", 18], ["Judul", 28], ["Uraian", 60], ["Persyaratan yang terpenuhi", 40], ["Saran peningkatan", 34], ["Foto", 24]];
-    GC.forEach((c, i) => gs.getColumn(i + 1).width = c[1]);
-    gs.mergeCells(`A1:${colLetter(GC.length)}1`); gs.getCell("A1").value = "GOOD SHE PRACTICES"; gs.getCell("A1").font = { name: "Arial", size: 14, bold: true, color: { argb: WHT } }; gs.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF2B7A4B" } }; gs.getRow(1).height = 26;
-    const h = gs.getRow(3); GC.forEach((c, i) => { const cell = h.getCell(i + 1); cell.value = c[0]; cell.font = { name: "Arial", size: 9, bold: true, color: { argb: WHT } }; cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLK } }; cell.border = border; cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true }; });
-    for (let i = 0; i < goods.length; i++) {
-      const f = goods[i], rn = 4 + i, row = gs.getRow(rn);
-      [i + 1, f.no, xDate(f.tanggal), f.area, f.lokasi, f.judul, f.deskripsi, stdLines(f).join("\n"), f.tindakan_pencegahan, ""].forEach((v, j) => { const c = row.getCell(j + 1); c.value = v ?? ""; c.font = { name: "Arial", size: 9, bold: j === 5 }; c.alignment = { vertical: "top", wrapText: true }; c.border = border; });
-      row.getCell(3).numFmt = "dd/mm/yyyy"; row.height = 96;
-      const p = (f.photos || [])[0];
-      if (p) { const d = await Store.getPhoto(p.id); if (d) { const id = wb.addImage({ base64: d, extension: "jpeg" }); const rr = Math.min(160 / (p.w || 4), 118 / (p.h || 3)); gs.addImage(id, { tl: { col: 9.08, row: rn - 1 + 0.08 }, ext: { width: Math.round((p.w || 4) * rr), height: Math.round((p.h || 3) * rr) }, editAs: "oneCell" }); } }
-    }
+    return true;
   }
 
-  /* ---- Referensi sheet ---- */
-  const rf = wb.addWorksheet("Kriteria & Referensi", { views: [{ showGridLines: false }] });
-  rf.columns = [{ width: 22 }, { width: 90 }, { width: 18 }];
-  const put = (a, b, c, st) => { const row = rf.addRow([a, b, c]); row.eachCell(cell => { cell.font = { name: "Arial", size: 9, bold: !!st }; cell.alignment = { vertical: "top", wrapText: true }; cell.border = border; if (st === "h") { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLK } }; cell.font = { name: "Arial", size: 9, bold: true, color: { argb: WHT } }; } }); return row; };
-  rf.addRow(["KRITERIA TINGKAT TEMUAN & BATAS WAKTU"]).font = { name: "Arial", size: 12, bold: true };
-  put("Tingkat", "Kriteria", "Batas waktu tindakan korektif", "h");
-  const d = S.settings.due;
-  const kr = [["Critical", "Potensi cedera berat/fatal atau LTI; ATAU pelanggaran regulasi pemerintah/perizinan yang berisiko sanksi; ATAU potensi kerusakan/pencemaran lingkungan signifikan. Pekerjaan/area dihentikan atau diisolasi segera (stop work).", `${d.Critical} hari (tindakan segera ≤ 24 jam)`],
-    ["Major", "Potensi atau aktual cedera ringan; ATAU temuan/peringatan regulator yang tidak fatal; ATAU ketidaksesuaian proses yang berdampak pada operasional.", `${d.Major} hari`],
-    ["Minor", "Selain Critical dan Major: dampak minimal, observasi, atau celah kecil dokumentasi.", `${d.Minor} hari`]];
-  kr.forEach(k => { const row = put(...k); row.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: SEVF[k[0]] } }; row.getCell(1).font = { name: "Arial", size: 9, bold: true, color: { argb: WHT } }; });
-  rf.addRow([]); rf.addRow(["HIERARKI PENGENDALIAN (ISO 45001:2018 Klausul 8.1.2)"]).font = { name: "Arial", size: 12, bold: true };
-  put("Level", "Contoh penerapan", "", "h");
-  [["Eliminasi", "Menghilangkan bahaya, mis. menyingkirkan APD rusak dari stok, membongkar instalasi yang tidak dipakai."], ["Substitusi", "Mengganti dengan yang kurang berbahaya, mis. bahan pembersih berbasis air."], ["Rekayasa", "Guarding, jack stand, barikade fisik, ventilasi, penataan ulang area kerja."], ["Administratif", "Prosedur/IK, rambu, inspeksi berkala, pelatihan, izin kerja."], ["APD", "Penyediaan APD yang sesuai dan layak pakai beserta instruksi pemakaiannya."]].forEach(x => put(x[0], x[1], ""));
-  rf.addRow([]); rf.addRow(["STATUS"]).font = { name: "Arial", size: 12, bold: true };
-  put("Status", "Arti", "", "h");
-  [["Open", "Belum ada tindakan korektif yang berjalan."], ["On Progress", "Tindakan korektif sedang berjalan, belum ada bukti penutupan."], ["Closed", "Tindakan selesai dan bukti penutupan telah diverifikasi QSHE."]].forEach(x => put(x[0], x[1], ""));
+  async function makeSheet(name, cols, list, kind) {
+    const need = kind === "need", n = cols.length, last = colLetter(n);
+    const ws = wb.addWorksheet(name, {
+      views: [{ state: "frozen", xSplit: 0, ySplit: 7, zoomScale: 80, zoomScaleNormal: 80, showGridLines: false }],
+      properties: { tabColor: { argb: need ? "FFF36F20" : "FF2B7A4B" }, defaultRowHeight: 15 },
+      pageSetup: { orientation: "landscape", paperSize: 8 /* A3 */, fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true, margins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.5, header: 0.2, footer: 0.25 } },
+      headerFooter: { oddFooter: "&LQSHE Department&CInspection Monitoring&RHalaman &P dari &N" }
+    });
+    ws.pageSetup.printTitlesRow = "6:7";
+    cols.forEach((c, i) => ws.getColumn(i + 1).width = c[1]);
+
+    /* judul & identitas */
+    ws.mergeCells(`A1:${last}1`);
+    const t = ws.getCell("A1"); t.value = "INSPECTION MONITORING"; t.font = { name: FONT, size: 24, bold: true }; t.alignment = { horizontal: "center", vertical: "middle" }; ws.getRow(1).height = 36;
+    ws.mergeCells(`A2:${last}2`);
+    const sub = ws.getCell("A2"); sub.value = need ? "Need Improvement — temuan yang perlu ditindaklanjuti" : "Good Point — praktik baik yang teramati"; sub.font = { name: FONT, size: 12, italic: true, color: { argb: "FF595959" } }; sub.alignment = { horizontal: "center" };
+    const mw = need ? 5 : n; /* lebar blok identitas (kolom) */
+    ws.mergeCells(`A3:${colLetter(mw)}3`); ws.getCell("A3").value = `Location : ${locText}`;
+    ws.mergeCells(`A4:${colLetter(mw)}4`); ws.getCell("A4").value = `Inspector : ${inspText}`;
+    ws.mergeCells(`A5:${colLetter(mw)}5`); ws.getCell("A5").value = `Tanggal : ${insp ? fmtTgl(insp.tanggal, true) : "Seluruh register"}${meta.isDraft ? "   |   DRAFT — untuk review tim" : ""}`;
+    ["A3", "A4", "A5"].forEach(a => { ws.getCell(a).font = { name: FONT, size: 11, bold: a === "A3", color: { argb: a === "A5" && meta.isDraft ? RED : "FF000000" } }; ws.getCell(a).alignment = { horizontal: "left", vertical: "middle" }; });
+
+    /* header 2 baris (baris 6–7), warna navy sesuai template */
+    cols.forEach((c, i) => {
+      const col = i + 1;
+      if (need && c[0] === "Photo") { ws.getCell(6, col).value = "Photo"; ws.getCell(7, col).value = "After"; }
+      else { ws.mergeCells(6, col, 7, col); ws.getCell(6, col).value = c[0]; }
+    });
+    for (let r = 6; r <= 7; r++) for (let c = 1; c <= n; c++) {
+      const cell = ws.getCell(r, c); cell.fill = solid(NAVY); cell.font = { name: FONT, size: 11, bold: true, color: { argb: WHT } };
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = { top: r === 6 ? med : thin, bottom: r === 7 ? med : thin, left: c === 1 ? med : thin, right: c === n ? med : thin };
+    }
+    ws.getRow(6).height = 24; ws.getRow(7).height = 20;
+
+    /* blok "Finding Close" (hanya Need Improvement) */
+    const R0 = 8, RN = R0 + Math.max(list.length, 1) - 1;
+    if (need) {
+      ws.mergeCells("H3:I4"); ws.getCell("H3").value = "Finding Close"; ws.getCell("H3").font = { name: FONT, size: 16, bold: true, color: { argb: WHT } };
+      ws.getCell("H3").alignment = { horizontal: "center", vertical: "middle" };
+      ws.mergeCells("J3:J4"); ws.getCell("J3").value = { formula: `COUNTIF(J${R0}:J${RN},"Closed*")&" / "&COUNT(A${R0}:A${RN})` };
+      ws.getCell("J3").font = { name: FONT, size: 18, bold: true, color: { argb: WHT } }; ws.getCell("J3").alignment = { horizontal: "center", vertical: "middle" };
+      for (let r = 3; r <= 4; r++) for (let c = 8; c <= 10; c++) { const cell = ws.getCell(r, c); cell.fill = solid("FF595959"); cell.border = allThin; }
+    }
+
+    /* isi */
+    const bodyFont = { name: FONT, size: 11 };
+    if (!list.length) {
+      ws.mergeCells(`A${R0}:${last}${R0}`); const c = ws.getCell(`A${R0}`); c.value = need ? "Tidak ada temuan pada inspeksi ini." : "Tidak ada good practice pada inspeksi ini."; c.font = { ...bodyFont, italic: true, color: { argb: "FF595959" } };
+      c.alignment = { horizontal: "center", vertical: "middle" }; c.border = allThin; ws.getRow(R0).height = 36;
+    }
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i], rn = R0 + i, row = ws.getRow(rn);
+      const loc = `${String(f.area || "").toUpperCase()}, ${fmtTgl(f.tanggal).toUpperCase()}` + (f.lokasi ? `\nLokasi: ${f.lokasi}` : "");
+      const desc = (f.judul ? f.judul + "\n" : "") + (f.deskripsi || "") + (f.stop_work ? "\n[STOP WORK — area/pekerjaan dihentikan]" : "");
+      const rem = stdLines(f).map(x => "• " + x).join("\n");
+      const plan = [f.tindakan_segera ? "Segera: " + f.tindakan_segera : "", ...(f.tindakan_korektif || []).map((c, j) => `${j + 1}. ${c.tindakan}`)].filter(Boolean).join("\n");
+      const late = need && f.status !== "Closed" && f.due && f.due < localISO();
+      const vals = [i + 1, loc, desc, "", rem, need ? plan : null, need ? "" : null, need ? xDate(f.due) : null, need ? (f.pic || "") : null, need ? (f.status || "Open") + (f.remarks ? "\n" + f.remarks : "") : null];
+      cols.forEach((c, j) => {
+        const cell = row.getCell(j + 1); cell.value = vals[j] ?? ""; cell.font = bodyFont; cell.border = allThin;
+        const center = [0, 1, 7, 8, 9].includes(j);
+        cell.alignment = { vertical: "middle", horizontal: center ? "center" : "left", wrapText: true, indent: center ? 0 : 1 };
+      });
+      row.getCell(3).font = bodyFont;
+      if (need) {
+        row.getCell(8).numFmt = "dd/mm/yyyy";
+        if (late) { row.getCell(8).font = { ...bodyFont, bold: true, color: { argb: RED } }; }
+        if (!f.due) row.getCell(8).value = "";
+      }
+      /* tinggi baris: cukup untuk foto & teks */
+      const hasPh = (f.photos || []).length || (need && (f.closePhotos || []).length);
+      const textH = Math.max(textLines(desc, cols[2][1]), textLines(rem, cols[4][1]), need ? textLines(plan, cols[5][1]) : 0) * 15 + 12;
+      const h = Math.min(400, Math.max(hasPh ? 172 : 60, textH));
+      row.height = h;
+      const boxH = px.row(h) - 8;
+      await putPhotos(ws, f.photos, 3, rn - 1, px.col(cols[3][1]) - 8, boxH);
+      if (need) await putPhotos(ws, f.closePhotos, 6, rn - 1, px.col(cols[6][1]) - 8, boxH);
+    }
+
+    /* status: warna + daftar-pilihan tidak dipasang agar kolom bebas diisi keterangan */
+    if (need && list.length) {
+      const rg = `J${R0}:J${RN}`, fill = argb => ({ type: "pattern", pattern: "solid", bgColor: { argb } });
+      ws.addConditionalFormatting({ ref: rg, rules: [
+        { type: "expression", priority: 1, formulae: [`LEFT($J${R0},6)="Closed"`], style: { fill: fill("FFE3F2E8"), font: { color: { argb: "FF2B7A4B" }, bold: true } } },
+        { type: "expression", priority: 2, formulae: [`LEFT($J${R0},11)="On Progress"`], style: { fill: fill("FFFFF0D9"), font: { color: { argb: "FFA35E00" }, bold: true } } },
+        { type: "expression", priority: 3, formulae: [`LEFT($J${R0},4)="Open"`], style: { fill: fill("FFFBE7E9"), font: { color: { argb: "FFC4162A" }, bold: true } } }] });
+    }
+
+    /* catatan penutup (teks dari template) */
+    const nr = RN + 2;
+    ws.mergeCells(`A${nr}:${last}${nr}`);
+    const nc = ws.getCell(`A${nr}`);
+    nc.value = "Note: \n1. Batas waktu untuk menindaklanjuti temuan 1 bulan setelah closing meeting cabang / Project.\n2. Hasil tindak lanjut akan dilaporkan kepada Management setiap 3 bulan.";
+    nc.font = { name: FONT, size: 11, color: { argb: RED } }; nc.alignment = { vertical: "top", horizontal: "left", wrapText: true, indent: 1 };
+    ws.getRow(nr).height = 62;
+    return ws;
+  }
+
+  await makeSheet("Good Point", GOOD, goods, "good");
+  await makeSheet("Need Improvement", NEED, items, "need");
+  wb.views = [{ activeTab: items.length || !goods.length ? 1 : 0, firstSheet: 0, visibility: "visible" }];
 
   const buf = await wb.xlsx.writeBuffer();
   return new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
 }
 
-/* ======================= POWERPOINT ======================= */
-const P = { F: "Arial", OR: "F36F20", NAVY: "13294B", INK: "16191E", GREY: "4A515B", SOFT: "E9ECEF", LINE: "D3D8DF", SEV: { Critical: "C4162A", Major: "C77700", Minor: "2A6496" }, ST: { Open: "C4162A", "On Progress": "C77700", Closed: "2B7A4B" } };
+/* ======================= POWERPOINT (di atas file template perusahaan) ======================= */
+const P = { F: "DINPro-Light", FB: "DINPro-Bold", OR: "F26F21", INK: "1E1E1E", GREY: "595959", SOFT: "F2F2F2", LINE: "D0D0D0", HEAD: "262626", ZEBRA: "FDF0E8", SEV: { Critical: "C4162A", Major: "C77700", Minor: "2A6496" }, ST: { Open: "C4162A", "On Progress": "C77700", Closed: "2B7A4B" } };
+const TEMPLATE_PPT = "assets/template-ppt.pptx";
 function fitRect(iw, ih, bx, by, bw, bh) { const r = Math.min(bw / (iw || 4), bh / (ih || 3)); const w = (iw || 4) * r, h = (ih || 3) * r; return { x: bx + (bw - w) / 2, y: by + (bh - h) / 2, w, h }; }
 function fitFont(texts, w, h, max, min) {
   for (let fs = max; fs >= min; fs -= 0.5) {
@@ -1445,180 +1480,242 @@ function fitFont(texts, w, h, max, min) {
   return min;
 }
 function clip(s, n) { s = String(s || ""); return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s; }
+
+/* Susun isi slide dengan PptxGenJS (ukuran 16:9 = 10 × 5,625 inci, sama dengan template), lalu tempelkan ke slide template. */
 async function buildPPT(insp, sets, opt) {
   await loadScript(LIBS.pptx);
-  const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_4x3";
-  pptx.author = "QSHE Department"; pptx.company = "QSHE Department"; pptx.title = `QSHE Inspection — ${insp.area} — ${insp.tanggal}`;
-  pptx.defineSlideMaster({ title: "TITLE", background: { data: ASSET.bgTitle }, objects: [
-    { rect: { x: 7.05, y: 0.52, w: 0.07, h: 0.34, fill: { color: P.OR } } },
-    { text: { text: "QSHE Department", options: { x: 7.2, y: 0.5, w: 2.5, h: 0.38, fontFace: P.F, fontSize: 16, bold: true, color: "FFFFFF", margin: 0, valign: "middle" } } }
-  ] });
-  pptx.defineSlideMaster({ title: "CONTENT", background: { data: ASSET.bgContent }, objects: [
-    { text: { text: "QSHE Department", options: { x: 7.85, y: 0.3, w: 1.8, h: 0.3, fontFace: P.F, fontSize: 11, bold: true, color: P.NAVY, align: "right", margin: 0 } } },
-    { text: { text: "Laporan Inspeksi QSHE", options: { x: 0.45, y: 7.24, w: 4, h: 0.24, fontFace: P.F, fontSize: 8, color: P.GREY, margin: 0, valign: "middle" } } }
-  ], slideNumber: { x: 9.2, y: 7.1, w: 0.5, h: 0.25, fontFace: P.F, fontSize: 8, color: P.GREY, align: "right" } });
-  const { F, OR, INK, GREY } = P;
-  const head = (s, t, sub, right) => {
-    s.addText(t, { x: 0.35, y: 0.3, w: 7.4, h: 0.42, fontFace: F, fontSize: 20, bold: true, color: P.NAVY, margin: 0 });
-    if (sub) s.addText(sub, { x: 0.35, y: 0.7, w: 7.4, h: 0.3, fontFace: F, fontSize: 12, color: OR, margin: 0 });
-    if (right) s.addText(right, { x: 5.6, y: 1.17, w: 4.05, h: 0.22, fontFace: F, fontSize: 9, color: GREY, align: "right", margin: 0 });
-    if (sets.isDraft) s.addText("DRAFT – untuk review tim", { x: 0.35, y: 1.17, w: 2.2, h: 0.22, fontFace: F, fontSize: 8, bold: true, color: "C4162A", margin: 0 });
+  const pptx = new PptxGenJS(); pptx.layout = "LAYOUT_16x9";
+  const { F, FB, OR, INK, GREY } = P;
+  const defs = []; /* judul tiap slide isi, urutannya sama dengan slide yang dibuat */
+  const X0 = 0.35, W = 9.3;
+  const mk = (title, right) => {
+    const s = pptx.addSlide(); defs.push({ title });
+    if (right) s.addText(right, { x: 5.6, y: 0.8, w: 4.05, h: 0.2, fontFace: F, fontSize: 9, color: GREY, align: "right", margin: 0 });
+    if (sets.isDraft) s.addText("DRAFT – untuk review tim", { x: X0, y: 0.8, w: 2.4, h: 0.2, fontFace: FB, bold: true, fontSize: 8.5, color: "C4162A", margin: 0 });
+    return s;
   };
   const photo = async (s, p, x, y, w, h, caption) => {
     const d = p ? await Store.getPhoto(p.id) : null;
-    if (d) { s.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: "F2F3F4" }, line: { color: P.LINE, width: 0.5 } }); const r = fitRect(p.w, p.h, x + 0.04, y + 0.04, w - 0.08, h - 0.08); s.addImage({ data: d, x: r.x, y: r.y, w: r.w, h: r.h }); }
-    else { s.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: "F2F3F4" }, line: { color: P.LINE, width: 0.5, dashType: "dash" } }); s.addText(caption || "Tidak ada foto", { x, y, w, h, fontFace: F, fontSize: 9, color: GREY, align: "center", valign: "middle" }); }
+    if (d) { s.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: "F2F2F2" }, line: { color: P.LINE, width: 0.5 } }); const r = fitRect(p.w, p.h, x + 0.03, y + 0.03, w - 0.06, h - 0.06); s.addImage({ data: d, x: r.x, y: r.y, w: r.w, h: r.h }); }
+    else { s.addShape(pptx.ShapeType.rect, { x, y, w, h, fill: { color: "F7F7F7" }, line: { color: P.LINE, width: 0.5, dashType: "dash" } }); s.addText(caption || "Tidak ada foto", { x, y, w, h, fontFace: F, fontSize: 9, color: GREY, align: "center", valign: "middle" }); }
   };
-  const sevChip = (s, sev, x, y) => s.addText(sev || "-", { x, y, w: 1.05, h: 0.3, fontFace: F, fontSize: 11, bold: true, color: "FFFFFF", fill: { color: P.SEV[sev] || GREY }, align: "center", valign: "middle", margin: 0 });
+  /* 1–4 foto tersusun otomatis di dalam satu area (1 penuh, 2 bertumpuk/berdampingan, 3–4 grid 2×2) */
+  const photoArea = async (s, list, x, y, w, h, stack) => {
+    const ph = (list || []).slice(0, 4), n = ph.length, gap = 0.08;
+    if (n <= 1) return photo(s, ph[0], x, y, w, h);
+    if (n === 2) { if (stack) { const hh = (h - gap) / 2; await photo(s, ph[0], x, y, w, hh); await photo(s, ph[1], x, y + hh + gap, w, hh); } else { const ww = (w - gap) / 2; await photo(s, ph[0], x, y, ww, h); await photo(s, ph[1], x + ww + gap, y, ww, h); } return; }
+    const ww = (w - gap) / 2, hh = (h - gap) / 2;
+    for (let k = 0; k < n; k++) await photo(s, ph[k], x + (k % 2) * (ww + gap), y + Math.floor(k / 2) * (hh + gap), ww, hh);
+  };
+  const sevChip = (s, sev, x, y) => s.addText(sev || "-", { x, y, w: 1.0, h: 0.27, fontFace: FB, bold: true, fontSize: 10.5, color: "FFFFFF", fill: { color: P.SEV[sev] || GREY }, align: "center", valign: "middle", margin: 0 });
   const inspectors = (insp.inspectors || []).join(", ") || "-";
   const allN = sets.items.length;
+  let s;
 
-  /* 1. cover */
-  let s = pptx.addSlide({ masterName: "TITLE" });
-  s.addText([{ text: "Executive Summary", options: { fontSize: 30, breakLine: true } }, { text: `${insp.area} Inspection Result`, options: { fontSize: insp.area.length > 26 ? 20 : insp.area.length > 14 ? 24 : 30, breakLine: true } }, { text: fmtTgl(insp.tanggal), options: { fontSize: 20 } }],
-    { x: 1.6, y: 2.15, w: 6.3, h: 2.1, fontFace: F, color: "FFFFFF", valign: "top", margin: 0 });
-  s.addText("Inspector by: " + inspectors, { x: 3.1, y: 4.55, w: 5.2, h: 0.45, fontFace: F, fontSize: 16, color: "FFFFFF", margin: 0 });
-  if (sets.isDraft) s.addText("DRAFT – untuk review tim", { x: 3.1, y: 5.15, w: 2.6, h: 0.36, fontFace: F, fontSize: 11, bold: true, color: INK, fill: { color: "FFFFFF" }, align: "center", valign: "middle", margin: 0 });
-
-  /* 2. tracking */
+  /* A. tracking temuan sebelumnya */
   if (opt.track && sets.tracked.length) {
     for (let i = 0; i < sets.tracked.length; i += 2) {
-      s = pptx.addSlide({ masterName: "CONTENT" });
-      head(s, "IMPROVEMENT TRACKING", "Status Tindak Lanjut Temuan Sebelumnya", `Tracking ${i + 1}–${Math.min(i + 2, sets.tracked.length)} dari ${sets.tracked.length}`);
+      s = mk("Improvement Tracking", `Status tindak lanjut temuan sebelumnya · ${i + 1}–${Math.min(i + 2, sets.tracked.length)} dari ${sets.tracked.length}`);
       const pair = sets.tracked.slice(i, i + 2);
       for (let j = 0; j < pair.length; j++) {
-        const f = pair[j], y = 1.5 + j * 2.9, st = f.status || "Open";
-        s.addShape(pptx.ShapeType.rect, { x: 0.35, y, w: 9.3, h: 2.7, fill: { color: "FFFFFF" }, line: { color: P.LINE, width: 0.75 } });
-        s.addShape(pptx.ShapeType.rect, { x: 0.35, y, w: 0.08, h: 2.7, fill: { color: P.ST[st] || GREY }, line: { color: P.ST[st] || GREY, width: 0 } });
-        s.addText(`${i + j + 1}.  ${f.no}`, { x: 0.55, y: y + 0.08, w: 3, h: 0.28, fontFace: F, fontSize: 10, bold: true, color: GREY, margin: 0 });
-        s.addText(st, { x: 4.3, y: y + 0.08, w: 1.1, h: 0.28, fontFace: F, fontSize: 10, bold: true, color: "FFFFFF", fill: { color: P.ST[st] || GREY }, align: "center", valign: "middle", margin: 0 });
+        const f = pair[j], y = 1.05 + j * 2.2, st = f.status || "Open", H = 2.08;
+        s.addShape(pptx.ShapeType.rect, { x: X0, y, w: W, h: H, fill: { color: "FFFFFF" }, line: { color: P.LINE, width: 0.75 } });
+        s.addShape(pptx.ShapeType.rect, { x: X0, y, w: 0.08, h: H, fill: { color: P.ST[st] || GREY }, line: { color: P.ST[st] || GREY, width: 0 } });
+        s.addText(`${i + j + 1}.  ${f.no}`, { x: 0.55, y: y + 0.07, w: 3, h: 0.25, fontFace: FB, bold: true, fontSize: 10, color: GREY, margin: 0 });
+        s.addText(st, { x: 4.3, y: y + 0.07, w: 1.1, h: 0.25, fontFace: FB, bold: true, fontSize: 10, color: "FFFFFF", fill: { color: P.ST[st] || GREY }, align: "center", valign: "middle", margin: 0 });
         const body = [
-          { text: clip(f.judul, 90), options: { bold: true, fontSize: 11, color: INK, breakLine: true } },
-          { text: clip(f.deskripsi, 300), options: { fontSize: 9, color: INK, breakLine: true } },
-          { text: clip(stdLines(f).join("; "), 170), options: { fontSize: 8, color: GREY, italic: true, breakLine: true } },
-          { text: `PIC: ${f.pic || "-"}   |   Batas waktu: ${fmtTgl(f.due)}${st === "Closed" && f.closedDate ? "   |   Ditutup: " + fmtTgl(f.closedDate) : ""}`, options: { fontSize: 9, bold: true, color: INK, breakLine: !!f.remarks } }
+          { text: clip(f.judul, 90), options: { bold: true, fontFace: FB, fontSize: 11, color: INK, breakLine: true } },
+          { text: clip(f.deskripsi, 260), options: { fontSize: 9, color: INK, breakLine: true } },
+          { text: clip(stdLines(f).join("; "), 150), options: { fontSize: 8, color: GREY, italic: true, breakLine: true } },
+          { text: `PIC: ${f.pic || "-"}   |   Batas waktu: ${fmtTgl(f.due)}${st === "Closed" && f.closedDate ? "   |   Ditutup: " + fmtTgl(f.closedDate) : ""}`, options: { fontSize: 9, bold: true, fontFace: FB, color: INK, breakLine: !!f.remarks } }
         ];
-        if (f.remarks) body.push({ text: "Progres: " + clip(f.remarks, 140), options: { fontSize: 8.5, color: GREY } });
-        s.addText(body, { x: 0.55, y: y + 0.42, w: 4.85, h: 2.2, fontFace: F, valign: "top", margin: 0, paraSpaceAfter: 3 });
-        await photo(s, (f.photos || [])[0], 5.55, y + 0.12, 1.95, 2.2, "Tidak ada foto");
-        await photo(s, (f.closePhotos || [])[0], 7.6, y + 0.12, 1.95, 2.2, st === "Closed" ? "Foto bukti belum diunggah" : "Belum ada bukti penutupan");
-        s.addText("Sebelum", { x: 5.55, y: y + 2.36, w: 1.95, h: 0.22, fontFace: F, fontSize: 8, color: GREY, align: "center", margin: 0 });
-        s.addText("Sesudah", { x: 7.6, y: y + 2.36, w: 1.95, h: 0.22, fontFace: F, fontSize: 8, color: GREY, align: "center", margin: 0 });
+        if (f.remarks) body.push({ text: "Progres: " + clip(f.remarks, 130), options: { fontSize: 8.5, color: GREY } });
+        s.addText(body, { x: 0.55, y: y + 0.38, w: 4.85, h: H - 0.45, fontFace: F, valign: "top", margin: 0, paraSpaceAfter: 3 });
+        await photo(s, (f.photos || [])[0], 5.55, y + 0.1, 1.95, 1.62, "Tidak ada foto");
+        await photo(s, (f.closePhotos || [])[0], 7.6, y + 0.1, 1.95, 1.62, st === "Closed" ? "Foto bukti belum diunggah" : "Belum ada bukti penutupan");
+        s.addText("Sebelum", { x: 5.55, y: y + 1.75, w: 1.95, h: 0.2, fontFace: F, fontSize: 8, color: GREY, align: "center", margin: 0 });
+        s.addText("Sesudah", { x: 7.6, y: y + 1.75, w: 1.95, h: 0.2, fontFace: F, fontSize: 8, color: GREY, align: "center", margin: 0 });
       }
     }
   }
 
-  /* 3. overview */
-  s = pptx.addSlide({ masterName: "CONTENT" });
-  head(s, "INSPECTION OVERVIEW", "(Ringkasan Pelaksanaan Inspeksi)");
+  /* B. overview */
+  s = mk("Inspection Overview", "Ringkasan pelaksanaan inspeksi");
   const ins = insp.inspectors || [], ise = insp.inspectees || [];
   const kv = [["Agenda", insp.agenda || "-"], ["Tanggal Pelaksanaan", fmtTgl(insp.tanggal, true)], ["Area", insp.area]];
-  for (let k = 0; k < Math.max(3, ins.length); k++) kv.push([`Nama Inspector ${k + 1}`, ins[k] || "-"]);
-  for (let k = 0; k < Math.max(3, ise.length); k++) kv.push([`Nama Inspectee ${k + 1}`, ise[k] || "-"]);
-  s.addTable(kv.map(([a, b]) => [{ text: a, options: { color: OR, fontSize: 12 } }, { text: ": " + b, options: { color: INK, fontSize: 12 } }]),
-    { x: 0.35, y: 1.55, w: 5.3, colW: [2.1, 3.2], fontFace: F, border: { type: "none" }, rowH: 0.36, margin: 0.02 });
+  for (let k = 0; k < Math.max(2, ins.length); k++) kv.push([`Nama Inspector ${k + 1}`, ins[k] || "-"]);
+  for (let k = 0; k < Math.max(2, ise.length); k++) kv.push([`Nama Inspectee ${k + 1}`, ise[k] || "-"]);
+  const rowH = Math.min(0.34, 4.2 / kv.length);
+  s.addTable(kv.map(([a, b]) => [{ text: a, options: { color: OR, fontFace: FB, bold: true, fontSize: 11 } }, { text: ": " + b, options: { color: INK, fontSize: 11 } }]),
+    { x: X0, y: 1.1, w: 5.4, colW: [2.0, 3.4], fontFace: F, border: { type: "none" }, rowH, margin: 0.02 });
   const cnt = sv => sets.items.filter(f => f.severity === sv).length;
-  s.addText("Hasil inspeksi", { x: 6.0, y: 1.55, w: 3.6, h: 0.3, fontFace: F, fontSize: 12, bold: true, color: INK, margin: 0 });
+  s.addText("Hasil inspeksi", { x: 6.1, y: 1.1, w: 3.5, h: 0.28, fontFace: FB, bold: true, fontSize: 12, color: INK, margin: 0 });
   [["Critical", cnt("Critical")], ["Major", cnt("Major")], ["Minor", cnt("Minor")]].forEach(([sv, n], k) => {
-    const y = 1.95 + k * 0.95;
-    s.addShape(pptx.ShapeType.rect, { x: 6.0, y, w: 3.6, h: 0.8, fill: { color: "FFFFFF" }, line: { color: P.LINE, width: 0.75 } });
-    s.addShape(pptx.ShapeType.rect, { x: 6.0, y, w: 0.1, h: 0.8, fill: { color: P.SEV[sv] }, line: { color: P.SEV[sv], width: 0 } });
-    s.addText(String(n), { x: 6.2, y, w: 1.0, h: 0.8, fontFace: F, fontSize: 30, bold: true, color: P.SEV[sv], valign: "middle", margin: 0 });
-    s.addText(sv, { x: 7.2, y, w: 2.3, h: 0.8, fontFace: F, fontSize: 13, color: INK, valign: "middle", margin: 0 });
+    const y = 1.45 + k * 0.85;
+    s.addShape(pptx.ShapeType.rect, { x: 6.1, y, w: 3.55, h: 0.72, fill: { color: "FFFFFF" }, line: { color: P.LINE, width: 0.75 } });
+    s.addShape(pptx.ShapeType.rect, { x: 6.1, y, w: 0.1, h: 0.72, fill: { color: P.SEV[sv] }, line: { color: P.SEV[sv], width: 0 } });
+    s.addText(String(n), { x: 6.3, y, w: 1.0, h: 0.72, fontFace: FB, bold: true, fontSize: 28, color: P.SEV[sv], valign: "middle", margin: 0 });
+    s.addText(sv, { x: 7.3, y, w: 2.3, h: 0.72, fontFace: F, fontSize: 13, color: INK, valign: "middle", margin: 0 });
   });
-  s.addText(`${sets.goods.length} good SHE practice   |   ${sets.items.filter(f => f.stop_work).length} stop work`, { x: 6.0, y: 4.85, w: 3.6, h: 0.3, fontFace: F, fontSize: 10, color: GREY, margin: 0 });
+  s.addText(`${sets.goods.length} good SHE practice   |   ${sets.items.filter(f => f.stop_work).length} stop work`, { x: 6.1, y: 4.05, w: 3.55, h: 0.28, fontFace: F, fontSize: 10, color: GREY, margin: 0 });
 
-  /* 4. summary table */
+  /* C. ringkasan temuan (tabel) */
   if (sets.items.length) {
-    const per = 7;
+    const per = 5;
     for (let i = 0; i < sets.items.length; i += per) {
-      s = pptx.addSlide({ masterName: "CONTENT" });
-      head(s, "RINGKASAN TEMUAN", "(Daftar Temuan Periode Berjalan)", sets.items.length > per ? `Halaman ${i / per + 1} dari ${Math.ceil(sets.items.length / per)}` : "");
-      const hdrOpt = { bold: true, color: "FFFFFF", fill: { color: P.NAVY }, align: "center", valign: "middle", fontSize: 10 };
+      s = mk("Ringkasan Temuan", sets.items.length > per ? `Halaman ${i / per + 1} dari ${Math.ceil(sets.items.length / per)}` : "Daftar temuan periode berjalan");
+      const hdrOpt = { bold: true, fontFace: FB, color: "FFFFFF", fill: { color: P.HEAD }, align: "center", valign: "middle", fontSize: 10 };
       const rows = [[{ text: "No", options: hdrOpt }, { text: "Temuan", options: hdrOpt }, { text: "Standar / Klausul", options: hdrOpt }, { text: "Tingkat", options: hdrOpt }, { text: "PIC", options: hdrOpt }, { text: "Batas Waktu", options: hdrOpt }]];
       sets.items.slice(i, i + per).forEach((f, k) => {
-        const zebra = { fill: { color: k % 2 ? "FFFFFF" : "FDF0E8" } };
+        const zebra = { fill: { color: k % 2 ? "FFFFFF" : P.ZEBRA } };
         rows.push([
           { text: String(i + k + 1), options: { ...zebra, align: "center", bold: true } },
-          { text: [{ text: clip(f.judul, 80), options: { bold: true, breakLine: true } }, { text: clip(f.lokasi || f.area, 60), options: { color: GREY, fontSize: 8 } }], options: zebra },
+          { text: [{ text: clip(f.judul, 80), options: { bold: true, fontFace: FB, breakLine: true } }, { text: clip(f.lokasi || f.area, 60), options: { color: GREY, fontSize: 8 } }], options: zebra },
           { text: clip((f.klausul_iso || []).map(k2 => `${k2.standar.replace(/:\d{4}/, "")} ${k2.klausul}`).concat((f.kriteria_smk3 || []).map(k2 => "SMK3 " + k2.kode)).join("\n"), 110), options: { ...zebra, fontSize: 8 } },
-          { text: f.severity, options: { bold: true, color: "FFFFFF", fill: { color: P.SEV[f.severity] || GREY }, align: "center" } },
+          { text: f.severity, options: { bold: true, fontFace: FB, color: "FFFFFF", fill: { color: P.SEV[f.severity] || GREY }, align: "center" } },
           { text: f.pic || "-", options: { ...zebra, align: "center" } },
-          { text: fmtShort(f.due), options: { ...zebra, align: "center" } }
+          { text: f.due ? fmtShort(f.due) : "-", options: { ...zebra, align: "center" } }
         ]);
       });
-      s.addTable(rows, { x: 0.35, y: 1.5, w: 9.3, colW: [0.45, 3.55, 2.05, 1.0, 1.15, 1.1], fontFace: F, fontSize: 9, color: INK, valign: "middle", border: { type: "solid", pt: 0.5, color: P.LINE }, rowH: [0.36].concat(Array(Math.min(per, sets.items.length - i)).fill(0.72)), margin: 0.05 });
+      s.addTable(rows, { x: X0, y: 1.1, w: W, colW: [0.45, 3.6, 2.05, 1.0, 1.1, 1.1], fontFace: F, fontSize: 9, color: INK, valign: "middle", border: { type: "solid", pt: 0.5, color: P.LINE }, rowH: [0.34].concat(Array(Math.min(per, sets.items.length - i)).fill(0.7)), margin: 0.05 });
     }
   }
 
-  /* 5. one slide per finding */
+  /* D. satu slide per temuan: foto otomatis tersusun + teks baku */
   for (let i = 0; i < sets.items.length; i++) {
     const f = sets.items[i];
-    s = pptx.addSlide({ masterName: "CONTENT" });
-    head(s, "CURRENT INSPECTION FINDINGS", "(Temuan Inspeksi Periode Berjalan)", `Temuan ${i + 1} dari ${allN}`);
-    sevChip(s, f.severity, 0.35, 1.5);
-    s.addText(`${f.no}   |   PIC: ${f.pic || "-"}   |   Batas waktu: ${fmtTgl(f.due)}${f.stop_work ? "   |   STOP WORK" : ""}`, { x: 1.5, y: 1.5, w: 8.15, h: 0.3, fontFace: F, fontSize: 10, bold: true, color: f.stop_work ? P.SEV.Critical : GREY, valign: "middle", margin: 0 });
-    s.addText(clip(f.judul, 110), { x: 0.35, y: 1.88, w: 9.3, h: 0.45, fontFace: F, fontSize: f.judul.length > 70 ? 13 : 15, bold: true, color: INK, valign: "middle", margin: 0 });
-    // photos (left)
-    const ph = (f.photos || []).slice(0, 2);
-    if (ph.length <= 1) await photo(s, ph[0], 0.35, 2.45, 3.75, 2.85);
-    else { await photo(s, ph[0], 0.35, 2.45, 3.75, 1.4); await photo(s, ph[1], 0.35, 3.9, 3.75, 1.4); }
-    s.addText("Lokasi: " + clip(f.lokasi || f.area, 70), { x: 0.35, y: 5.33, w: 3.75, h: 0.24, fontFace: F, fontSize: 8, color: GREY, italic: true, margin: 0 });
-    // description (right)
+    s = mk("Current Inspection Findings", `Temuan ${i + 1} dari ${allN}`);
+    const ca = caLines(f).map(x => clip(x.replace(/^\[[^\]]+\]\s*/, ""), 150));
+    const hasFU = !!(f.tindakan_segera || ca.length || f.pic || f.due || (f.akar_masalah || {}).uraian || f.bukti_penutupan);
+    const top = 1.72, bottom = hasFU ? 4.3 : 5.38;
+    sevChip(s, f.severity, X0, 1.04);
+    s.addText(`${f.no}   |   ${f.area}${f.stop_work ? "   |   STOP WORK" : ""}`, { x: 1.45, y: 1.04, w: 8.2, h: 0.27, fontFace: FB, bold: true, fontSize: 10, color: f.stop_work ? P.SEV.Critical : GREY, valign: "middle", margin: 0 });
+    s.addText(clip(f.judul, 110), { x: X0, y: 1.32, w: W, h: 0.36, fontFace: FB, bold: true, fontSize: String(f.judul).length > 70 ? 12.5 : 14, color: INK, valign: "middle", margin: 0 });
+    await photoArea(s, f.photos, X0, top, 3.7, bottom - top - 0.27, true);
+    s.addText("Lokasi: " + clip(f.lokasi || f.area, 70), { x: X0, y: bottom - 0.24, w: 3.7, h: 0.22, fontFace: F, fontSize: 8, color: GREY, italic: true, margin: 0 });
     const desc = f.deskripsi || "", risk = f.potensi_risiko ? "Potensi risiko: " + f.potensi_risiko : "";
-    const dfs = fitFont([desc, risk], 5.35, 1.7, 11, 8);
-    s.addText([{ text: "Deskripsi Temuan", options: { bold: true, color: OR, fontSize: 10, breakLine: true } }, { text: desc, options: { fontSize: dfs, color: INK, breakLine: !!risk } }].concat(risk ? [{ text: risk, options: { fontSize: dfs - 0.5, color: GREY, italic: true } }] : []),
-      { x: 4.3, y: 2.42, w: 5.35, h: 1.95, fontFace: F, valign: "top", align: "justify", margin: 0, paraSpaceAfter: 3 });
-    const sl = stdLines(f, true).map(x => clip(x, 115));
-    const sfs = fitFont(sl, 5.2, 0.85, 9, 7);
-    s.addShape(pptx.ShapeType.rect, { x: 4.3, y: 4.4, w: 5.35, h: 1.15, fill: { color: P.SOFT }, line: { color: P.SOFT, width: 0 } });
-    s.addText([{ text: "Standar / Klausul / Regulasi", options: { bold: true, color: OR, fontSize: 9, breakLine: true } }].concat(sl.map((x, k) => ({ text: x, options: { bullet: { indent: 10 }, fontSize: sfs, color: INK, breakLine: k < sl.length - 1 } }))),
-      { x: 4.38, y: 4.44, w: 5.2, h: 1.08, fontFace: F, valign: "top", margin: 0 });
-    // follow-up band
-    s.addShape(pptx.ShapeType.rect, { x: 0.35, y: 5.68, w: 9.3, h: 1.45, fill: { color: "FFFFFF" }, line: { color: P.LINE, width: 0.75 } });
-    s.addShape(pptx.ShapeType.rect, { x: 0.35, y: 5.68, w: 0.08, h: 1.45, fill: { color: P.NAVY }, line: { color: OR, width: 0 } });
-    const ca = caLines(f).map(x => clip(x, 150));
-    const leftT = [f.tindakan_segera, ...ca], rightT = [(f.akar_masalah || {}).uraian, f.bukti_penutupan];
-    const ffs = Math.min(fitFont(leftT, 5.3, 1.1, 10, 6.5), fitFont(rightT, 3.4, 1.1, 10, 6.5));
-    s.addText([{ text: "Tindakan segera: ", options: { bold: true, fontSize: ffs, color: INK } }, { text: clip(f.tindakan_segera || "-", 200), options: { fontSize: ffs, color: INK, breakLine: true } }, { text: "Tindakan korektif:", options: { bold: true, fontSize: ffs, color: INK, breakLine: true } }]
-      .concat(ca.map((x, k) => ({ text: x, options: { bullet: { type: "number" }, fontSize: ffs, color: INK, breakLine: k < ca.length - 1 } }))),
-      { x: 0.55, y: 5.74, w: 5.4, h: 1.34, fontFace: F, valign: "top", margin: 0 });
-    s.addText([{ text: "Akar masalah (dugaan awal): ", options: { bold: true, fontSize: ffs, color: INK } }, { text: clip([(f.akar_masalah || {}).kategori, String((f.akar_masalah || {}).uraian || "").replace(/^Dugaan awal:\s*/i, "")].filter(Boolean).join(" – "), 160), options: { fontSize: ffs, color: INK, breakLine: true } },
-      { text: "Bukti penutupan: ", options: { bold: true, fontSize: ffs, color: INK } }, { text: clip(f.bukti_penutupan || "-", 140), options: { fontSize: ffs, color: INK } }],
-      { x: 6.1, y: 5.74, w: 3.45, h: 1.34, fontFace: F, valign: "top", margin: 0 });
+    const sl = stdLines(f, true).map(x => clip(x, 130));
+    const T = bottom - top, sh = Math.min(T * 0.55, Math.max(0.8, 0.36 + sl.length * 0.27)), dh = T - sh - 0.08;
+    const dfs = fitFont([desc, risk], 5.4, dh - 0.22, 11, 7.5);
+    s.addText([{ text: "Deskripsi Temuan", options: { bold: true, fontFace: FB, color: OR, fontSize: 10, breakLine: true } }, { text: desc, options: { fontSize: dfs, color: INK, breakLine: !!risk } }].concat(risk ? [{ text: risk, options: { fontSize: dfs - 0.5, color: GREY, italic: true } }] : []),
+      { x: 4.25, y: top, w: 5.4, h: dh, fontFace: F, valign: "top", align: "justify", margin: 0, paraSpaceAfter: 3 });
+    const sfs = fitFont(sl, 5.25, sh - 0.3, 9, 6.5);
+    s.addShape(pptx.ShapeType.rect, { x: 4.25, y: top + dh + 0.08, w: 5.4, h: sh, fill: { color: P.SOFT }, line: { color: P.SOFT, width: 0 } });
+    s.addText([{ text: "Remarks: standar / klausul / regulasi", options: { bold: true, fontFace: FB, color: OR, fontSize: 9, breakLine: true } }].concat(sl.length ? sl.map((x, k) => ({ text: x, options: { bullet: { indent: 10 }, fontSize: sfs, color: INK, breakLine: k < sl.length - 1 } })) : [{ text: "-", options: { fontSize: sfs, color: GREY } }]),
+      { x: 4.33, y: top + dh + 0.12, w: 5.25, h: sh - 0.08, fontFace: F, valign: "top", margin: 0 });
+    if (hasFU) { /* band tindak lanjut (Improvement plan, PIC, Due date, Status) — hanya tampil bila sudah diisi */
+      const by = 4.38, bh = 1.0;
+      s.addShape(pptx.ShapeType.rect, { x: X0, y: by, w: W, h: bh, fill: { color: "FFFFFF" }, line: { color: P.LINE, width: 0.75 } });
+      s.addShape(pptx.ShapeType.rect, { x: X0, y: by, w: 0.08, h: bh, fill: { color: OR }, line: { color: OR, width: 0 } });
+      const leftT = [f.tindakan_segera, ...ca], rightT = [(f.akar_masalah || {}).uraian, f.bukti_penutupan];
+      const ffs = Math.min(fitFont(leftT, 5.3, bh - 0.1, 10, 6.5), fitFont(rightT, 3.4, bh - 0.1, 10, 6.5));
+      s.addText([{ text: "Improvement plan", options: { bold: true, fontFace: FB, color: OR, fontSize: ffs, breakLine: true } }]
+        .concat(f.tindakan_segera ? [{ text: "Segera: " + clip(f.tindakan_segera, 180), options: { fontSize: ffs, color: INK, breakLine: !!ca.length } }] : [])
+        .concat(ca.map((x, k) => ({ text: x, options: { bullet: { type: "number" }, fontSize: ffs, color: INK, breakLine: k < ca.length - 1 } })))
+        .concat(!f.tindakan_segera && !ca.length ? [{ text: "Belum diisi", options: { fontSize: ffs, color: GREY, italic: true } }] : []),
+        { x: 0.55, y: by + 0.05, w: 5.4, h: bh - 0.08, fontFace: F, valign: "top", margin: 0 });
+      s.addText([{ text: "PIC: ", options: { bold: true, fontFace: FB, fontSize: ffs, color: INK } }, { text: f.pic || "-", options: { fontSize: ffs, color: INK, breakLine: true } },
+        { text: "Due date: ", options: { bold: true, fontFace: FB, fontSize: ffs, color: INK } }, { text: f.due ? fmtTgl(f.due) : "-", options: { fontSize: ffs, color: INK, breakLine: true } },
+        { text: "Status: ", options: { bold: true, fontFace: FB, fontSize: ffs, color: INK } }, { text: f.status || "Open", options: { fontSize: ffs, color: P.ST[f.status || "Open"] || INK, bold: true, breakLine: !!f.bukti_penutupan } }]
+        .concat(f.bukti_penutupan ? [{ text: "Bukti penutupan: ", options: { bold: true, fontFace: FB, fontSize: ffs, color: INK } }, { text: clip(f.bukti_penutupan, 90), options: { fontSize: ffs, color: INK } }] : []),
+        { x: 6.1, y: by + 0.05, w: 3.45, h: bh - 0.08, fontFace: F, valign: "top", margin: 0 });
+    }
   }
 
-  /* 6. good practice */
+  /* E. good practice */
   if (opt.good) for (const g of sets.goods) {
-    s = pptx.addSlide({ masterName: "CONTENT" });
-    head(s, "GOOD SHE PRACTICES", "(Implementasi Standar K3L Yang Baik)", g.no);
-    const gp = (g.photos || []).slice(0, 2);
-    if (gp.length <= 1) await photo(s, gp[0], 0.35, 1.5, 9.3, 3.55);
-    else { await photo(s, gp[0], 0.35, 1.5, 4.6, 3.55); await photo(s, gp[1], 5.05, 1.5, 4.6, 3.55); }
+    s = mk("Good SHE Practices", g.no);
+    await photoArea(s, g.photos, X0, 1.1, 5.2, 4.25, true);
     const txt = [g.deskripsi, g.tindakan_pencegahan ? "Catatan peningkatan: " + g.tindakan_pencegahan : ""].filter(Boolean);
-    const gfs = fitFont([g.judul, ...txt, stdLines(g).join("; ")], 9.3, 1.95, 12, 8);
-    s.addText([{ text: g.judul, options: { bold: true, fontSize: gfs + 1, color: INK, breakLine: true } }].concat(txt.map((t, k) => ({ text: t, options: { fontSize: gfs, color: INK, breakLine: true } })))
-      .concat(stdLines(g).length ? [{ text: "Sesuai: " + clip(stdLines(g).join("; "), 200), options: { fontSize: gfs - 1.5, color: GREY, italic: true } }] : []),
-      { x: 0.35, y: 5.15, w: 9.3, h: 2.0, fontFace: F, valign: "top", align: "justify", margin: 0, paraSpaceAfter: 4 });
+    const std = stdLines(g).length ? "Sesuai: " + clip(stdLines(g).join("; "), 220) : "";
+    const gfs = fitFont([g.judul, ...txt, std], 3.9, 4.25, 12, 7.5);
+    s.addText([{ text: g.judul, options: { bold: true, fontFace: FB, fontSize: gfs + 1.5, color: INK, breakLine: true } }]
+      .concat(txt.map(t => ({ text: t, options: { fontSize: gfs, color: INK, breakLine: true } })))
+      .concat(std ? [{ text: std, options: { fontSize: gfs - 1.5, color: GREY, italic: true } }] : []),
+      { x: 5.75, y: 1.1, w: 3.9, h: 4.25, fontFace: F, valign: "top", align: "left", margin: 0, paraSpaceAfter: 5 });
   }
 
-  /* 7. conclusion */
-  s = pptx.addSlide({ masterName: "CONTENT" });
-  head(s, "KESIMPULAN", "");
+  /* F. kesimpulan */
+  s = mk("Kesimpulan");
   const conc = opt.kesimpulan || autoConclusion(insp, sets);
   const recs = opt.rekomendasi && opt.rekomendasi.length ? opt.rekomendasi : autoRecs(sets);
-  const cfs = fitFont([conc, ...recs.map(r => r.judul + ": " + r.uraian), "Rekomendasi"], 9.1, 5.6, 12, 8);
-  const paras = conc.split(/\n\s*\n|\n/).filter(Boolean);
-  s.addText(paras.map((p, k) => ({ text: p, options: { fontSize: cfs, color: INK, breakLine: true, paraSpaceAfter: 6 } }))
-    .concat([{ text: "Rekomendasi Tindakan Perbaikan", options: { fontSize: cfs, bold: true, underline: { style: "sng" }, color: INK, breakLine: true } }])
-    .concat(recs.flatMap((r, k) => [{ text: r.judul + (r.uraian ? ": " : ""), options: { bold: true, fontSize: cfs, color: INK, bullet: { indent: 12 } } }, { text: r.uraian || "", options: { fontSize: cfs, color: INK, breakLine: k < recs.length - 1 } }])),
-    { x: 0.45, y: 1.45, w: 9.1, h: 5.7, fontFace: F, valign: "top", align: "justify", margin: 0 });
+  const cfs = fitFont([conc, ...recs.map(r => r.judul + ": " + r.uraian), "Rekomendasi"], 9.1, 4.2, 12, 8);
+  s.addText(conc.split(/\n\s*\n|\n/).filter(Boolean).map(p => ({ text: p, options: { fontSize: cfs, color: INK, breakLine: true, paraSpaceAfter: 6 } }))
+    .concat(recs.length ? [{ text: "Rekomendasi Tindakan Perbaikan", options: { fontSize: cfs, bold: true, fontFace: FB, color: INK, breakLine: true } }] : [])
+    .concat(recs.flatMap((r, k) => [{ text: r.judul + (r.uraian ? ": " : ""), options: { bold: true, fontFace: FB, fontSize: cfs, color: INK, bullet: { indent: 12 } } }, { text: r.uraian || "", options: { fontSize: cfs, color: INK, breakLine: k < recs.length - 1 } }])),
+    { x: 0.45, y: 1.1, w: 9.1, h: 4.25, fontFace: F, valign: "top", align: "justify", margin: 0 });
 
-  /* 8. closing */
-  s = pptx.addSlide({ masterName: "TITLE" });
-  s.addText("Terima Kasih", { x: 1.6, y: 2.6, w: 6, h: 0.9, fontFace: F, fontSize: 36, color: "FFFFFF", margin: 0 });
+  const gen = await pptx.write({ outputType: "arraybuffer" });
+  return await mergeIntoTemplate(gen, defs, insp);
+}
 
-  return await pptx.write({ outputType: "blob" });
+/* ---- tempel slide hasil PptxGenJS ke file template: hal. 1–2 dipakai apa adanya, hal. isi memakai latar & judul template, hal. penutup dari template ---- */
+async function mergeIntoTemplate(genBuf, defs, insp) {
+  const resp = await fetch(TEMPLATE_PPT, { cache: "no-cache" });
+  if (!resp.ok) throw new Error("File template PowerPoint (assets/template-ppt.pptx) tidak ditemukan.");
+  const tpl = await JSZip.loadAsync(await resp.arrayBuffer());
+  const gz = await JSZip.loadAsync(genBuf);
+  const rd = async (z, p) => await z.file(p).async("string");
+  const xmlEsc = t => String(t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const REL = "http://schemas.openxmlformats.org/package/2006/relationships";
+
+  /* 1. hal. 2 (cover): hanya isi teks placeholder, tata letak & desain tidak diubah */
+  let s2 = await rd(tpl, "ppt/slides/slide2.xml");
+  s2 = s2.replace("[Division/Department Name]", "QSHE Department");
+  const t1 = xmlEsc(`Inspection Monitoring – ${insp.area}`), t2 = xmlEsc(fmtTgl(insp.tanggal));
+  s2 = s2.replace('<a:p><a:endParaRPr lang="en-ID" dirty="0"/></a:p>',
+    `<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="2000" b="1" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:latin typeface="DINPro-Bold"/></a:rPr><a:t>${t1}</a:t></a:r></a:p>` +
+    `<a:p><a:pPr algn="ctr"/><a:r><a:rPr lang="en-US" sz="1400" dirty="0"><a:solidFill><a:srgbClr val="FFFFFF"/></a:solidFill><a:latin typeface="DINPro-Light"/></a:rPr><a:t>${t2}</a:t></a:r></a:p>`);
+  tpl.file("ppt/slides/slide2.xml", s2);
+
+  /* 2. hal. penutup (slide 6 template): judul diisi */
+  let s6 = await rd(tpl, "ppt/slides/slide6.xml");
+  s6 = s6.replace("<a:t>(Topic)</a:t>", "<a:t>Inspection Monitoring</a:t>");
+  tpl.file("ppt/slides/slide6.xml", s6);
+
+  /* 3. slide isi: salin slide contoh template (latar, garis & logo) + judul + bentuk hasil PptxGenJS */
+  const base = await rd(tpl, "ppt/slides/slide3.xml");
+  const baseRels = await rd(tpl, "ppt/slides/_rels/slide3.xml.rels");
+  let ct = await rd(tpl, "[Content_Types].xml");
+  let prs = await rd(tpl, "ppt/presentation.xml");
+  let prsRels = await rd(tpl, "ppt/_rels/presentation.xml.rels");
+  const slideRIds = [];
+  for (let i = 0; i < defs.length; i++) {
+    const gx = await rd(gz, `ppt/slides/slide${i + 1}.xml`);
+    const grel = new DOMParser().parseFromString(await rd(gz, `ppt/slides/_rels/slide${i + 1}.xml.rels`), "application/xml");
+    const map = {}; let extra = ""; let rn = 3;
+    for (const r of [...grel.getElementsByTagName("Relationship")]) {
+      if (!/\/image$/.test(r.getAttribute("Type"))) continue;
+      const src = "ppt/" + r.getAttribute("Target").replace(/^\.\.\//, ""), name = `gen${i + 1}_${src.split("/").pop()}`;
+      tpl.file("ppt/media/" + name, await gz.file(src).async("uint8array"));
+      const id = "rId" + rn++; map[r.getAttribute("Id")] = id;
+      extra += `<Relationship Id="${id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="../media/${name}"/>`;
+    }
+    let inner = (gx.match(/<\/p:grpSpPr>([\s\S]*)<\/p:spTree>/) || [, ""])[1];
+    inner = inner.replace(/<p:cNvPr id="(\d+)"/g, (m, n) => `<p:cNvPr id="${+n + 20}"`).replace(/r:embed="(rId\d+)"/g, (m, id) => `r:embed="${map[id] || id}"`);
+    let x = base.replace("<a:t>(Topic)</a:t>", `<a:t>${xmlEsc(defs[i].title)}</a:t>`)
+      .replace('<a:off x="256511" y="-77031"/><a:ext cx="3922084" cy="970166"/>', '<a:off x="256511" y="-77031"/><a:ext cx="6900000" cy="970166"/>')
+      .replace(/<a:solidFill><a:schemeClr val="accent2"\/><\/a:solidFill><a:latin typeface="DINPro-Bold"[^>]*\/>/, '<a:solidFill><a:srgbClr val="F26F21"/></a:solidFill><a:latin typeface="DINPro-Bold"/>')
+      .replace(/<p:sp><p:nvSpPr><p:cNvPr id="3" name="Content Placeholder 2">[\s\S]*?<\/p:sp>/, "")
+      .replace(/<p:extLst><p:ext uri="\{BB962C8B[\s\S]*?<\/p:extLst>/, "")
+      .replace("</p:spTree>", inner + "</p:spTree>");
+    const n = 7 + i;
+    tpl.file(`ppt/slides/slide${n}.xml`, x);
+    tpl.file(`ppt/slides/_rels/slide${n}.xml.rels`, baseRels.replace("</Relationships>", extra + "</Relationships>"));
+    ct = ct.replace("</Types>", `<Override PartName="/ppt/slides/slide${n}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/></Types>`);
+    const rid = "rId" + (100 + i); slideRIds.push([300 + i, rid]);
+    prsRels = prsRels.replace("</Relationships>", `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide${n}.xml"/></Relationships>`);
+  }
+  /* 4. buang slide contoh 3–5, atur urutan: 1, 2, isi…, penutup */
+  [3, 4, 5].forEach(n => {
+    tpl.remove(`ppt/slides/slide${n}.xml`); tpl.remove(`ppt/slides/_rels/slide${n}.xml.rels`);
+    ct = ct.replace(new RegExp(`<Override PartName="/ppt/slides/slide${n}\\.xml"[^>]*/>`), "");
+  });
+  prsRels = prsRels.replace(/<Relationship Id="rId(6|7|8)"[^>]*\/>/g, "");
+  prs = prs.replace(/<p:sldIdLst>[\s\S]*?<\/p:sldIdLst>/, `<p:sldIdLst><p:sldId id="256" r:id="rId4"/><p:sldId id="261" r:id="rId5"/>${slideRIds.map(([id, r]) => `<p:sldId id="${id}" r:id="${r}"/>`).join("")}<p:sldId id="264" r:id="rId9"/></p:sldIdLst>`);
+  tpl.file("[Content_Types].xml", ct); tpl.file("ppt/presentation.xml", prs); tpl.file("ppt/_rels/presentation.xml.rels", prsRels);
+  tpl.file("docProps/app.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"><Application>Microsoft Office PowerPoint</Application><Company>QSHE Department</Company></Properties>`);
+  return await tpl.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation", compression: "DEFLATE" });
 }
 function autoConclusion(insp, sets) {
   const c = s => sets.items.filter(f => f.severity === s).length;
@@ -1652,7 +1749,7 @@ function onData() {
     if (S.tab === "laporan") renderReportSide();
   }, 80);
 }
-applyTheme(); renderPhotoGrid(); renderDatalists(); renderInspSelect(); renderSession(); updateAINote();
+applyTheme(); renderNotes(); renderDatalists(); renderInspSelect(); renderSession(); updateAINote();
 Store.init();
 /* identitas: mode perangkat QSHE diatur di Pengaturan (PIN) */
 
