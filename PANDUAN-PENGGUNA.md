@@ -76,3 +76,21 @@ Laporan yang masih berisi entri belum Final akan diberi tanda **DRAFT**.
 | **Minor** | Dampak minimal | Housekeeping kurang rapi, rambu pudar |
 
 Tingkat temuan dari tombol Rapikan hanya **usulan**. Keputusan akhir ada di supervisor dan QSHE.
+
+---
+
+## Pasang aplikasi di laptop
+
+Buka aplikasi di **Chrome atau Edge**, lalu tekan tombol **Pasang aplikasi** di pojok atas (atau ikon pasang di kolom alamat). Aplikasi muncul di Start Menu/desktop dan terbuka seperti program biasa, dan tetap bisa dipakai tanpa internet. Di iPhone/iPad: Share → Add to Home Screen.
+
+## Lokasi simpan laporan (default)
+
+Di tab **Laporan**, kartu **Lokasi simpan laporan** → **Pilih folder** (hanya Chrome/Edge di laptop). Pilih sekali, misalnya folder OneDrive QSHE; semua PowerPoint, Excel, dan draft email selanjutnya otomatis masuk ke `<folder>\Laporan\`. Pilihan ini diingat. Jika browser meminta izin lagi setelah dibuka ulang, tekan **Izinkan akses**. Tanpa folder, file masuk ke folder Download.
+
+## Kirim laporan lewat Outlook
+
+1. Isi **Kepada** dan **Cc** (tersimpan sebagai default).
+2. Tekan **Kirim lewat Outlook**. Aplikasi menyusun PowerPoint + Excel dan mengunduh file `Email_….eml`.
+3. Klik file `.eml` itu: **Outlook terbuka sebagai email baru** dengan penerima, subjek, isi, dan 2 lampiran sudah terisi. Tekan Kirim.
+
+Catatan: browser tidak boleh melampirkan file langsung ke Outlook, sehingga ada langkah klik file `.eml`. Di Chrome/Edge, pilih *Selalu buka file jenis ini* agar berikutnya otomatis. Jika Outlook Anda tidak membuka `.eml` (misalnya Outlook baru), pakai **Buka Outlook tanpa lampiran** atau **Outlook Web**, lalu lampirkan file dari folder Laporan. Di HP, tombol memakai menu Bagikan sehingga lampiran ikut ke aplikasi Outlook. Lampiran lebih dari ±18 MB tidak disertakan.
