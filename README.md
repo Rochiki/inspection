@@ -102,5 +102,5 @@ Aplikasi ini memakai komponen gratis berikut. Salinan lisensinya ada di folder `
 
 ## Pasang, folder default, dan email Outlook
 
-- Aplikasi bisa dipasang (PWA) lewat tombol *Pasang aplikasi*; panduan per browser ada di Pengaturan.
+- Aplikasi tetap berupa PWA (manifest + service worker); tidak ada tombol pasang di tampilan.
 - Tab Laporan: kartu *Lokasi simpan laporan* (File System Access API, handle disimpan di IndexedDB) dan *Kirim lewat Outlook* yang membuat `.eml` draft (`X-Unsent: 1`) berisi PPT + Excel; fallback `mailto:`, Outlook Web, dan Web Share di perangkat sentuh. Penerima default disimpan di pengaturan.

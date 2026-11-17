@@ -3,7 +3,7 @@
    SETIAP KALI ADA PERUBAHAN FILE: naikkan angka VERSI di bawah (v1 -> v2 -> v3 ...)
    supaya HP dan laptop pengguna mengambil versi terbaru.
    ===================================================================== */
-const VERSI = "v3";
+const VERSI = "v4";
 const CACHE = "temuan-qshe-" + VERSI;
 const FILES = [
   "./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png",

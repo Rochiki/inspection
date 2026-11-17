@@ -79,9 +79,6 @@ Tingkat temuan dari tombol Rapikan hanya **usulan**. Keputusan akhir ada di supe
 
 ---
 
-## Pasang aplikasi di laptop
-
-Buka aplikasi di **Chrome atau Edge**, lalu tekan tombol **Pasang aplikasi** di pojok atas (atau ikon pasang di kolom alamat). Aplikasi muncul di Start Menu/desktop dan terbuka seperti program biasa, dan tetap bisa dipakai tanpa internet. Di iPhone/iPad: Share → Add to Home Screen.
 
 ## Lokasi simpan laporan (default)
 

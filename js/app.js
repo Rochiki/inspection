@@ -466,28 +466,6 @@ Balas HANYA JSON: {"kesimpulan":"","rekomendasi":[{"judul":"","uraian":""}]}`;
 
 /* ---------------- aplikasi terpasang (PWA) ---------------- */
 if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(() => {});
-let installEvt = null;
-const isStandalone = () => matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: window-controls-overlay)").matches || navigator.standalone === true;
-window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; renderInstall(); });
-window.addEventListener("appinstalled", () => { installEvt = null; renderInstall(); toast("Aplikasi terpasang. Cari ikon Temuan QSHE di Start Menu / desktop."); });
-function renderInstall() {
-  const hb = $("#btnInstall"), sb = $("#btnInstall2"), info = $("#instInfo"); if (!sb) return;
-  const ua = navigator.userAgent, edge = /Edg\//.test(ua), chrome = /Chrome\//.test(ua) && !edge, ios = /iPhone|iPad/.test(ua);
-  if (hb) hb.hidden = !installEvt;
-  if (isStandalone()) { sb.hidden = true; info.textContent = "Aplikasi sudah terpasang dan sedang berjalan sebagai aplikasi."; return; }
-  sb.hidden = false;
-  if (installEvt) { info.innerHTML = "Tekan tombol di bawah. Aplikasi akan punya ikon sendiri di Start Menu / desktop, jendela sendiri, dan tetap bisa dipakai tanpa internet."; return; }
-  const how = ios ? "Di Safari tekan <b>Bagikan → Add to Home Screen</b>."
-    : edge ? "Di Edge buka menu <b>⋯ → Aplikasi → Instal situs ini sebagai aplikasi</b>, atau klik ikon <b>Instal</b> di sisi kanan kolom alamat."
-    : chrome ? "Di Chrome klik ikon <b>Instal</b> (monitor dengan panah) di sisi kanan kolom alamat, atau menu <b>⋮ → Transmisikan, simpan, dan bagikan → Instal halaman sebagai aplikasi</b>."
-    : "Browser ini tidak mendukung pemasangan aplikasi. Buka link ini di <b>Chrome</b> atau <b>Microsoft Edge</b> (laptop) atau Chrome (Android).";
-  info.innerHTML = how + " Setelah terpasang, buka dari ikonnya — data yang sudah ada tetap terbaca.";
-  sb.onclick = e => { e.preventDefault(); toast("Ikuti langkah di atas — browser belum menawarkan tombol pasang otomatis.", ""); };
-}
-document.addEventListener("click", async e => {
-  if (!e.target.closest("[data-install]") || !installEvt) return;
-  installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; renderInstall();
-});
 /* ======================= UI ======================= */
 const REVIEW_LABEL = { Draft: "Draft", Review: "Menunggu Supervisor", QSHE: "Menunggu QSHE", Final: "Final" };
 
@@ -1008,7 +986,7 @@ $("#btnSettings").onclick = () => {
   $("#sPics").value = s.pics.join("\n"); $("#sAgenda").value = s.agenda;
   $("#sSpv").value = (s.supervisors || []).join("\n"); $("#sQshe").value = s.qsheName || ""; $("#sOneDrive").value = s.onedrive || "";
   const th = LS.get("qf:theme") || "auto"; $$("#segTheme button").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === th));
-  renderFolderSettings(); renderInstall(); openModal("#mSettings");
+  renderFolderSettings(); openModal("#mSettings");
 };
 $$("#segTheme button").forEach(b => b.onclick = () => { LS.set("qf:theme", b.dataset.v); applyTheme(); $$("#segTheme button").forEach(x => x.setAttribute("aria-pressed", x === b)); });
 function applyTheme() { const t = LS.get("qf:theme") || "auto"; if (t === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t); }
