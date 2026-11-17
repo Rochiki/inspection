@@ -19,7 +19,7 @@
     <div class="wordmark" aria-label="QSHE Department"><i class="wm-bar" aria-hidden="true"></i><span><b>QSHE</b> Department</span></div>
     <div class="app-name">Temuan Lapangan<small>Foto + catatan singkat → laporan inspeksi baku</small></div>
     <div class="top-sp"></div>
-    <button class="btn" id="btnInstall" hidden style="min-height:36px;padding:0 12px">Pasang aplikasi</button>
+    <button class="btn" id="btnInstall" data-install hidden style="min-height:36px;padding:0 12px">Pasang aplikasi</button>
     <div class="status-pill" id="storeStatus" title="Status penyimpanan" role="button" tabindex="0"><i class="dot"></i><span>Memuat…</span></div>
     <button class="icon-btn" id="btnSettings" aria-label="Pengaturan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   </div>
@@ -147,6 +147,20 @@
           <button class="btn block" id="btnXLSAll">Unduh Excel — seluruh register</button>
         </div>
         <hr class="rule">
+        <div class="stack" id="outLoc">
+          <div class="row between"><b>Lokasi simpan laporan</b><button class="btn ghost" id="btnOutPick" style="min-height:34px;padding:4px 10px">Pilih folder</button></div>
+          <p class="small muted" id="outLocInfo" style="margin:0"></p>
+        </div>
+        <hr class="rule">
+        <div class="stack" id="mailBox">
+          <b>Kirim laporan lewat email (Outlook)</b>
+          <label class="f">Kepada <span class="hint">pisahkan dengan titik koma; tersimpan sebagai default</span><input class="in" id="mTo" type="text" inputmode="email" autocomplete="off" placeholder="nama@hexindo.co.id; atasan@hexindo.co.id"></label>
+          <label class="f">Tembusan (Cc) <span class="hint">opsional</span><input class="in" id="mCc" type="text" inputmode="email" autocomplete="off"></label>
+          <button class="btn primary block" id="btnMail"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 7l9 6 9-6"/></svg>Kirim lewat Outlook (PPT + Excel terlampir)</button>
+          <p class="small muted" id="mailNote" style="margin:0"></p>
+          <div class="row small" style="flex-wrap:wrap;gap:12px"><a href="#" id="lnkMailto">Buka Outlook tanpa lampiran</a><a href="#" id="lnkOwa" target="_blank" rel="noopener">Outlook Web</a><a href="#" id="lnkShare" hidden>Bagikan ke aplikasi lain…</a></div>
+        </div>
+        <hr class="rule">
         <div class="stack">
           <div class="small muted">Kirim ke QSHE (data tersimpan di perangkat ini):</div>
           <button class="btn block" id="btnText">Salin ringkasan teks — WhatsApp / email</button>
@@ -191,6 +205,11 @@
 <div class="modal" id="mSettings" hidden><div class="modal-card"><div class="panel stack">
   <h2>Pengaturan</h2>
   <p class="sub" style="margin:0">Tersimpan di perangkat ini. Bagikan ke tim lewat folder bersama atau paket data.</p>
+  <section class="stack" style="border:1px solid var(--line);border-radius:10px;padding:12px">
+    <h4 style="margin:0">Pasang di laptop / HP</h4>
+    <p class="small muted" id="instInfo" style="margin:0"></p>
+    <div class="row" style="flex-wrap:wrap;gap:8px"><button type="button" class="btn primary" id="btnInstall2" data-install>Pasang aplikasi</button></div>
+  </section>
   <section class="stack" style="border:1px solid var(--line);border-radius:10px;padding:12px">
     <h4 style="margin:0">Bagikan aplikasi</h4>
     <p class="small muted" style="margin:0">Kirim link aplikasi ke rekan kerja. Mereka cukup membuka link lalu memasangnya — data tiap orang tersimpan di perangkatnya sendiri.</p>

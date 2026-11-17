@@ -99,3 +99,8 @@ Aplikasi ini memakai komponen gratis berikut. Salinan lisensinya ada di folder `
 | PptxGenJS 3.12.0 | Membuat file PowerPoint | MIT |
 | Chart.js 4.4.1 | Grafik dashboard | MIT |
 | Barlow & Barlow Condensed | Font | SIL Open Font License 1.1 |
+
+## Pasang, folder default, dan email Outlook
+
+- Aplikasi bisa dipasang (PWA) lewat tombol *Pasang aplikasi*; panduan per browser ada di Pengaturan.
+- Tab Laporan: kartu *Lokasi simpan laporan* (File System Access API, handle disimpan di IndexedDB) dan *Kirim lewat Outlook* yang membuat `.eml` draft (`X-Unsent: 1`) berisi PPT + Excel; fallback `mailto:`, Outlook Web, dan Web Share di perangkat sentuh. Penerima default disimpan di pengaturan.

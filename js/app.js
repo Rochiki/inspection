@@ -89,7 +89,7 @@ const DEFAULT_SETTINGS = {
   pics: ["GA", "Branch Head", "Workshop / Service", "Warehouse / Part", "Mobile Workshop / Field Service", "HRGA", "IT", "Procurement", "QSHE", "Remanufacturing", "Project Site"],
   areas: [["Head Office Jakarta", "HO"], ["Cabang Jakarta", "JKT"], ["Cabang Balikpapan", "BPN"], ["Cabang Surabaya", "SBY"], ["Cabang Palembang", "PLG"], ["Cabang Pontianak", "PNK"], ["Site KPC Sangatta", "KPC"]],
   agenda: "Inspeksi Internal QSHE Dept",
-  supervisors: [], qsheName: "Rosiana Rizky Amelia", onedrive: "", qsheDevice: false, qshePin: ""
+  supervisors: [], qsheName: "Rosiana Rizky Amelia", onedrive: "", qsheDevice: false, qshePin: "", mailTo: "", mailCc: ""
 };
 const S = {
   inspections: [], findings: [], settings: clone(DEFAULT_SETTINGS),
@@ -107,6 +107,8 @@ function mergeSettings(x) {
   if (typeof x.onedrive === "string") s.onedrive = x.onedrive;
   if (typeof x.qsheDevice === "boolean") s.qsheDevice = x.qsheDevice;
   if (typeof x.qshePin === "string") s.qshePin = x.qshePin;
+  if (typeof x.mailTo === "string") s.mailTo = x.mailTo;
+  if (typeof x.mailCc === "string") s.mailCc = x.mailCc;
   return s;
 }
 
@@ -296,6 +298,7 @@ document.addEventListener("click", e => {
   else if (Folder.state !== "ok") $("#btnSettings").click();
 });
 function updateStoreStatus() {
+  if (typeof renderOutLoc === "function") try { renderOutLoc(); } catch (e) {}
   const el = $("#storeStatus"); if (!el) return; const dot = el.querySelector(".dot"); const tx = el.querySelector("span");
   dot.className = "dot"; el.style.cursor = "pointer";
   if (Folder.state === "ok") { dot.classList.add("ok"); tx.textContent = `Folder: ${Folder.handle.name}`; el.title = "Data tersimpan di perangkat dan disalin otomatis ke folder " + Folder.handle.name + (Folder.last ? " (terakhir " + new Date(Folder.last).toLocaleTimeString("id-ID") + ")" : ""); }
@@ -464,10 +467,26 @@ Balas HANYA JSON: {"kesimpulan":"","rekomendasi":[{"judul":"","uraian":""}]}`;
 /* ---------------- aplikasi terpasang (PWA) ---------------- */
 if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) navigator.serviceWorker.register("sw.js").catch(() => {});
 let installEvt = null;
-window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; const b = $("#btnInstall"); if (b) b.hidden = false; });
+const isStandalone = () => matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: window-controls-overlay)").matches || navigator.standalone === true;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; renderInstall(); });
+window.addEventListener("appinstalled", () => { installEvt = null; renderInstall(); toast("Aplikasi terpasang. Cari ikon Temuan QSHE di Start Menu / desktop."); });
+function renderInstall() {
+  const hb = $("#btnInstall"), sb = $("#btnInstall2"), info = $("#instInfo"); if (!sb) return;
+  const ua = navigator.userAgent, edge = /Edg\//.test(ua), chrome = /Chrome\//.test(ua) && !edge, ios = /iPhone|iPad/.test(ua);
+  if (hb) hb.hidden = !installEvt;
+  if (isStandalone()) { sb.hidden = true; info.textContent = "Aplikasi sudah terpasang dan sedang berjalan sebagai aplikasi."; return; }
+  sb.hidden = false;
+  if (installEvt) { info.innerHTML = "Tekan tombol di bawah. Aplikasi akan punya ikon sendiri di Start Menu / desktop, jendela sendiri, dan tetap bisa dipakai tanpa internet."; return; }
+  const how = ios ? "Di Safari tekan <b>Bagikan → Add to Home Screen</b>."
+    : edge ? "Di Edge buka menu <b>⋯ → Aplikasi → Instal situs ini sebagai aplikasi</b>, atau klik ikon <b>Instal</b> di sisi kanan kolom alamat."
+    : chrome ? "Di Chrome klik ikon <b>Instal</b> (monitor dengan panah) di sisi kanan kolom alamat, atau menu <b>⋮ → Transmisikan, simpan, dan bagikan → Instal halaman sebagai aplikasi</b>."
+    : "Browser ini tidak mendukung pemasangan aplikasi. Buka link ini di <b>Chrome</b> atau <b>Microsoft Edge</b> (laptop) atau Chrome (Android).";
+  info.innerHTML = how + " Setelah terpasang, buka dari ikonnya — data yang sudah ada tetap terbaca.";
+  sb.onclick = e => { e.preventDefault(); toast("Ikuti langkah di atas — browser belum menawarkan tombol pasang otomatis.", ""); };
+}
 document.addEventListener("click", async e => {
-  if (!e.target.closest("#btnInstall") || !installEvt) return;
-  installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; $("#btnInstall").hidden = true;
+  if (!e.target.closest("[data-install]") || !installEvt) return;
+  installEvt.prompt(); await installEvt.userChoice.catch(() => {}); installEvt = null; renderInstall();
 });
 /* ======================= UI ======================= */
 const REVIEW_LABEL = { Draft: "Draft", Review: "Menunggu Supervisor", QSHE: "Menunggu QSHE", Final: "Final" };
@@ -989,7 +1008,7 @@ $("#btnSettings").onclick = () => {
   $("#sPics").value = s.pics.join("\n"); $("#sAgenda").value = s.agenda;
   $("#sSpv").value = (s.supervisors || []).join("\n"); $("#sQshe").value = s.qsheName || ""; $("#sOneDrive").value = s.onedrive || "";
   const th = LS.get("qf:theme") || "auto"; $$("#segTheme button").forEach(b => b.setAttribute("aria-pressed", b.dataset.v === th));
-  renderFolderSettings(); openModal("#mSettings");
+  renderFolderSettings(); renderInstall(); openModal("#mSettings");
 };
 $$("#segTheme button").forEach(b => b.onclick = () => { LS.set("qf:theme", b.dataset.v); applyTheme(); $$("#segTheme button").forEach(x => x.setAttribute("aria-pressed", x === b)); });
 function applyTheme() { const t = LS.get("qf:theme") || "auto"; if (t === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t); }
@@ -1001,7 +1020,8 @@ $("#btnSaveSettings").onclick = async () => {
     agenda: $("#sAgenda").value.trim() || DEFAULT_SETTINGS.agenda,
     supervisors: lines($("#sSpv").value), qsheName: $("#sQshe").value.trim() || DEFAULT_SETTINGS.qsheName,
     onedrive: /^https:\/\//i.test($("#sOneDrive").value.trim()) ? $("#sOneDrive").value.trim() : "",
-    qsheDevice: !!S.settings.qsheDevice, qshePin: S.settings.qshePin || ""
+    qsheDevice: !!S.settings.qsheDevice, qshePin: S.settings.qshePin || "",
+    mailTo: S.settings.mailTo || "", mailCc: S.settings.mailCc || ""
   };
   try { await Store.putSettings(obj); S.settings = mergeSettings(obj); closeModal($("#mSettings")); renderDatalists(); toast("Pengaturan tersimpan."); } catch (e) { toast(e.message, "err"); }
 };
@@ -1138,6 +1158,7 @@ function reportSets(insp) {
   return { items, goods, tracked, isDraft };
 }
 function renderReportSide() {
+  renderOutLoc(); fillMailFields(); if ($("#lnkShare")) $("#lnkShare").hidden = !canShareFiles(); refreshMailLinks();
   const sel = $("#rInsp"); const cur = sel.value || S.currentInsp;
   sel.innerHTML = `<option value="">— pilih inspeksi —</option>` + sortedInsps().map(i => `<option value="${esc(i.id)}" ${i.id === cur ? "selected" : ""}>${esc(inspLabel(i))}</option>`).join("");
   const insp = inspById(sel.value);
@@ -1209,6 +1230,127 @@ function reportText(insp) {
   out.push(Store.mode === "local" ? "(Dikirim dari perangkat lapangan — foto menyusul terpisah atau lewat paket data.)" : "");
   return out.join("\n").trim();
 }
+/* ---------------- lokasi simpan laporan (default) + kirim lewat Outlook ---------------- */
+const MIME_PPT = "application/vnd.openxmlformats-officedocument.presentationml.presentation", MIME_XLS = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const MAIL_MAX = 18 * 1024 * 1024; /* batas aman lampiran email (Outlook umumnya 20–25 MB) */
+function renderOutLoc() {
+  const i = $("#outLocInfo"), b = $("#btnOutPick"); if (!i || !b) return;
+  if (!Folder.supported) { b.hidden = true; i.innerHTML = "Browser ini tidak bisa memilih folder (umumnya HP). File laporan masuk ke folder <b>Download</b>. Untuk memilih folder simpan, buka aplikasi di <b>Chrome / Edge di laptop</b>."; return; }
+  b.hidden = false;
+  if (Folder.handle) {
+    b.textContent = Folder.state === "ask" ? "Izinkan akses" : "Ganti folder";
+    i.innerHTML = Folder.state === "ask"
+      ? `Folder default: <b>${esc(Folder.handle.name)}/Laporan</b> — browser meminta izin ulang. Tekan <b>Izinkan akses</b> sekali setiap kali aplikasi dibuka.`
+      : `Default: <b>${esc(Folder.handle.name)}/Laporan</b>. Semua PowerPoint, Excel, dan draft email otomatis tersimpan di sini.`;
+  } else { b.textContent = "Pilih folder"; i.innerHTML = "Belum dipilih — file masuk ke folder Download browser. Pilih satu kali (misalnya folder OneDrive QSHE), seterusnya semua laporan otomatis tersimpan di sana."; }
+}
+$("#btnOutPick").onclick = async () => {
+  try { if (Folder.handle && Folder.state === "ask") await Folder.check(true); else await Folder.pick(); }
+  catch (e) { if (e && e.name !== "AbortError") toast(e.message || "Folder gagal dipilih.", "err"); }
+  renderOutLoc(); if (typeof renderFolderSettings === "function") renderFolderSettings();
+};
+const MAIL_RE = /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]+$/;
+const parseMails = v => String(v || "").split(/[;,\s]+/).map(x => x.trim()).filter(Boolean);
+function fillMailFields() {
+  const t = $("#mTo"), c = $("#mCc"); if (!t) return;
+  if (document.activeElement !== t) t.value = S.settings.mailTo || "";
+  if (document.activeElement !== c) c.value = S.settings.mailCc || "";
+}
+let _mailT = null;
+function saveMailDefaults() {
+  clearTimeout(_mailT);
+  return (async () => {
+    const mailTo = $("#mTo").value.trim(), mailCc = $("#mCc").value.trim();
+    if (mailTo === (S.settings.mailTo || "") && mailCc === (S.settings.mailCc || "")) return;
+    const obj = { ...S.settings, mailTo, mailCc };
+    try { await Store.putSettings(obj); S.settings = mergeSettings(obj); } catch (e) { console.error(e); }
+  })();
+}
+["#mTo", "#mCc"].forEach(id => { $(id).addEventListener("input", () => { clearTimeout(_mailT); _mailT = setTimeout(saveMailDefaults, 900); refreshMailLinks(); }); $(id).addEventListener("blur", saveMailDefaults); });
+function mailSubject(insp, sets) { return `Laporan Inspection Monitoring – ${insp.area} – ${fmtTgl(insp.tanggal)}${sets.isDraft ? " (DRAFT)" : ""}`; }
+function mailBody(insp, sets) {
+  const c = sv => sets.items.filter(f => f.severity === sv).length;
+  return ["Yth. Bapak/Ibu,", "", "Bersama email ini kami sampaikan laporan Inspection Monitoring dengan ringkasan berikut:", "",
+    `Lokasi     : ${insp.area}`, `Tanggal    : ${fmtTgl(insp.tanggal, true)}`, `Inspector  : ${(insp.inspectors || []).join(", ") || "-"}`,
+    `Hasil      : ${sets.items.length} temuan (${c("Critical")} Critical, ${c("Major")} Major, ${c("Minor")} Minor) dan ${sets.goods.length} good practice`, "",
+    "Lampiran: laporan PowerPoint dan register Excel.", sets.isDraft ? "Catatan: laporan ini masih berstatus DRAFT untuk review tim." : "", "Terima kasih.", "", "Salam,", "QSHE Department"].filter(x => x !== null).join("\n");
+}
+function mailCtx() {
+  const insp = inspById($("#rInsp").value); if (!insp) { toast("Pilih inspeksi dulu.", "err"); return null; }
+  const to = parseMails($("#mTo").value), cc = parseMails($("#mCc").value);
+  const bad = to.concat(cc).filter(x => !MAIL_RE.test(x));
+  if (bad.length) { toast("Alamat email tidak valid: " + bad.join(", "), "err"); return null; }
+  const sets = reportSets(insp);
+  return { insp, sets, to, cc, subject: mailSubject(insp, sets), body: mailBody(insp, sets) };
+}
+function refreshMailLinks() {
+  const insp = inspById($("#rInsp").value), a = $("#lnkOwa"); if (!insp || !a) return;
+  const sets = reportSets(insp), q = new URLSearchParams({ to: parseMails($("#mTo").value).join(";"), cc: parseMails($("#mCc").value).join(";"), subject: mailSubject(insp, sets), body: mailBody(insp, sets) });
+  a.href = "https://outlook.office.com/mail/deeplink/compose?" + q.toString().replace(/\+/g, "%20");
+}
+$("#lnkMailto").onclick = e => {
+  e.preventDefault(); const x = mailCtx(); if (!x) return; saveMailDefaults();
+  const q = [x.cc.length ? "cc=" + encodeURIComponent(x.cc.join(";")) : "", "subject=" + encodeURIComponent(x.subject), "body=" + encodeURIComponent(x.body)].filter(Boolean).join("&");
+  location.href = `mailto:${x.to.map(encodeURIComponent).join(";")}?${q}`;
+  $("#mailNote").textContent = "Outlook dibuka tanpa lampiran. Unduh PowerPoint & Excel lewat tombol di atas, lalu lampirkan.";
+};
+const b64 = bytes => { let s = ""; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(s); };
+const wrap76 = t => t.replace(/(.{76})/g, "$1\r\n");
+/* .eml berstatus draft (X-Unsent): dibuka Outlook sebagai email baru lengkap dengan penerima, subjek, isi, dan lampiran */
+async function buildEml({ to, cc, subject, body, files }) {
+  const bd = "----=_QSHE_" + Math.random().toString(36).slice(2) + Date.now().toString(36), enc = new TextEncoder();
+  const hdr = ["X-Unsent: 1", to.length ? "To: " + to.join(", ") : null, cc.length ? "Cc: " + cc.join(", ") : null, `Subject: =?UTF-8?B?${b64(enc.encode(subject))}?=`, "MIME-Version: 1.0", `Content-Type: multipart/mixed; boundary="${bd}"`].filter(Boolean).join("\r\n");
+  const parts = [`${hdr}\r\n\r\n--${bd}\r\nContent-Type: text/plain; charset="utf-8"\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrap76(b64(enc.encode(body)))}\r\n`];
+  for (const f of files) parts.push(`--${bd}\r\nContent-Type: ${f.type}; name="${f.name}"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename="${f.name}"\r\n\r\n${wrap76(b64(new Uint8Array(await f.blob.arrayBuffer())))}\r\n`);
+  parts.push(`--${bd}--\r\n`);
+  return new Blob(parts, { type: "message/rfc822" });
+}
+async function makeReportFiles(insp, sets) {
+  const tag = `${slug(insp.kode || insp.area)}_${insp.tanggal.replace(/-/g, "")}${sets.isDraft ? "_DRAFT" : ""}`;
+  const ppt = await buildPPT(insp, sets, { kesimpulan: $("#rConc").value.trim(), rekomendasi: parseRec(), track: $("#rTrack").checked, good: $("#rGood").checked });
+  const xls = await buildExcel([...sets.items], [...sets.goods], { title: `${insp.area} — ${fmtTgl(insp.tanggal, true)}`, insp, isDraft: sets.isDraft });
+  return [{ name: `QSHE_Inspection_${tag}.pptx`, blob: ppt, type: MIME_PPT }, { name: `Register_Temuan_${tag}.xlsx`, blob: xls, type: MIME_XLS }];
+}
+function plainDownload(name, blob) { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); }
+const canShareFiles = () => { try { return !!(navigator.share && navigator.canShare && navigator.canShare({ files: [new File([new Blob(["x"])], "a.pptx", { type: MIME_PPT })] })); } catch (e) { return false; } };
+async function putInFolder(files) {
+  if (!Folder.handle) return false;
+  if (Folder.state !== "ok" && !(await Folder.check(true))) return false;
+  try { for (const f of files) await Folder.write("Laporan/" + f.name, f.blob); return true; } catch (e) { return false; }
+}
+async function sendMail(mode) { /* mode: "outlook" (otomatis pilih cara terbaik) atau "share" */
+  const x = mailCtx(); if (!x) return;
+  const btn = $("#btnMail"), note = $("#mailNote");
+  if (!x.sets.items.length && !x.sets.goods.length) return toast("Belum ada entri di inspeksi ini.", "err");
+  busyBtn(btn, true, "Menyusun laporan…");
+  try {
+    await saveMailDefaults();
+    const files = await makeReportFiles(x.insp, x.sets);
+    const total = files.reduce((n, f) => n + f.blob.size, 0), mb = (total / 1048576).toFixed(1).replace(".", ",");
+    const inFolder = await putInFolder(files);
+    const where = inFolder ? `Salinan PowerPoint & Excel tersimpan di folder ${Folder.handle.name}/Laporan. ` : "";
+    const touch = matchMedia("(pointer: coarse)").matches;
+    if ((mode === "share" || touch) && canShareFiles()) {
+      try { await navigator.share({ files: files.map(f => new File([f.blob], f.name, { type: f.type })), title: x.subject, text: x.body }); note.textContent = where + "Menu Bagikan dibuka — pilih Outlook."; return; }
+      catch (e) { if (e && e.name === "AbortError") return; /* gagal share → lanjut ke cara .eml */ }
+    }
+    if (total > MAIL_MAX) {
+      note.textContent = `${where}Ukuran lampiran ${mb} MB terlalu besar untuk email. Outlook dibuka tanpa lampiran — ${inFolder ? "ambil file dari folder Laporan" : "unduh file lewat tombol di atas"}, lalu lampirkan atau kirim lewat link OneDrive.`;
+      if (!inFolder) files.forEach(f => plainDownload(f.name, f.blob));
+      $("#lnkMailto").click(); return;
+    }
+    const eml = await buildEml({ ...x, files });
+    const name = `Email_${slug(x.insp.kode || x.insp.area)}_${x.insp.tanggal.replace(/-/g, "")}.eml`;
+    if (inFolder) { try { await Folder.write("Laporan/" + name, eml); } catch (e) {} }
+    plainDownload(name, eml);
+    note.innerHTML = `${esc(where)}<b>${esc(name)}</b> (${mb} MB) diunduh. Klik file itu di daftar unduhan browser — <b>Outlook akan terbuka sebagai email baru</b> dengan penerima, subjek, isi, dan 2 lampiran sudah terisi; tinggal tekan Kirim. Tips Chrome/Edge: pada unduhan, pilih <i>Selalu buka file jenis ini</i> agar berikutnya otomatis terbuka.`;
+    toast("Draft email siap — klik file .eml untuk membuka Outlook.");
+  } catch (err) { toast(err.message || "Gagal menyiapkan email.", "err"); console.error(err); }
+  finally { busyBtn(btn, false); }
+}
+$("#btnMail").onclick = () => sendMail("outlook");
+$("#lnkShare").onclick = e => { e.preventDefault(); sendMail("share"); };
+
 $("#btnText").onclick = () => {
   const insp = inspById($("#rInsp").value); if (!insp) return toast("Pilih inspeksi dulu.", "err");
   $("#txtOut").value = reportText(insp); openModal("#mText");
